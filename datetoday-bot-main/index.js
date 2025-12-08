@@ -5,6 +5,10 @@ import { postEveningFact } from "./evening.js";
 import { postWeeklyThread } from "./weekly.js";
 import { monitorMentions } from "./engagement.js";
 import { postPoll } from "./polls.js";
+import { postWhatIfThread, postHiddenConnection } from "./viralContent.js";
+import { info, error, warn } from "./logger.js";
+import { runHealthChecks } from "./health.js";
+import { cleanOldLogs } from "./logger.js";
 
 dotenv.config();
 
@@ -18,16 +22,32 @@ function requireEnv(name) {
 // Ensure required credentials exist
 ["API_KEY", "API_SECRET", "ACCESS_TOKEN", "ACCESS_SECRET", "OPENAI_KEY"].forEach(requireEnv);
 
-console.log("[DateToday] Bot starting…");
+info("[DateToday] Bot starting...");
 
-// Basic global error logging
+// Enhanced global error logging
 process.on("unhandledRejection", (reason) => {
-  console.error("[UnhandledRejection]", reason);
+  error("[UnhandledRejection]", { reason: reason?.message || reason });
 });
 
 process.on("uncaughtException", (err) => {
-  console.error("[UncaughtException]", err);
+  error("[UncaughtException]", { error: err.message, stack: err.stack });
+  process.exit(1);
 });
+
+// Run initial health check
+runHealthChecks().catch(err => {
+  warn("Initial health check failed", { error: err.message });
+});
+
+// Clean old logs daily
+cron.schedule("0 2 * * *", async () => {
+  await cleanOldLogs();
+}, { timezone: "UTC" });
+
+// Run health checks every hour
+cron.schedule("0 * * * *", async () => {
+  await runHealthChecks();
+}, { timezone: "UTC" });
 
 // Cron expressions are evaluated in UTC by default.
 // 09:00 UTC - main On This Day tweet
@@ -70,6 +90,26 @@ cron.schedule("0 14 * * 2,4", async () => {
   }
 }, { timezone: "UTC" });
 
+// Wednesday 12:00 UTC - "What If" viral thread
+cron.schedule("0 12 * * 3", async () => {
+  console.log("[Cron] Running What If thread job (Wednesday 12:00 UTC)");
+  try {
+    await postWhatIfThread();
+  } catch (err) {
+    console.error("[Cron] What If job failed:", err.message || err);
+  }
+}, { timezone: "UTC" });
+
+// Friday 15:00 UTC - Hidden Connections (viral content)
+cron.schedule("0 15 * * 5", async () => {
+  console.log("[Cron] Running Hidden Connection job (Friday 15:00 UTC)");
+  try {
+    await postHiddenConnection();
+  } catch (err) {
+    console.error("[Cron] Hidden Connection job failed:", err.message || err);
+  }
+}, { timezone: "UTC" });
+
 // Every 15 minutes - check for mentions and engage
 cron.schedule("*/15 * * * *", async () => {
   console.log("[Cron] Checking for mentions...");
@@ -80,5 +120,8 @@ cron.schedule("*/15 * * * *", async () => {
   }
 }, { timezone: "UTC" });
 
-console.log("[DateToday] Schedules registered. Bot is now waiting for cron triggers.");
-console.log("[DateToday] Engagement system active - monitoring mentions every 15 minutes.");
+info("[DateToday] Schedules registered. Bot is now waiting for cron triggers.");
+info("[DateToday] Engagement system active - monitoring mentions every 15 minutes.");
+info("[DateToday] Health monitoring active - checks every hour.");
+info("[DateToday] Analytics tracking enabled.");
+info("[DateToday] Content moderation enabled.");

@@ -5,7 +5,10 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "node tests/test-basic.js",
+    "health": "node -e \"import('./health.js').then(m => m.getHealthReport().then(r => console.log(JSON.stringify(r, null, 2))))\"",
+    "analytics": "node -e \"import('./analytics.js').then(m => m.getAnalyticsSummary().then(r => console.log(JSON.stringify(r, null, 2))))\""
   },
   "dependencies": {
     "twitter-api-v2": "^1.15.0",

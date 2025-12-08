@@ -28,7 +28,7 @@ const MAX_TWEET_LENGTH = 280;
  * @param {string} text - Tweet text to validate
  * @returns {string} - Validated and trimmed text
  */
-function validateTweetText(text) {
+export function validateTweetText(text) {
   if (!text || typeof text !== "string") {
     throw new Error("Tweet text must be a non-empty string");
   }

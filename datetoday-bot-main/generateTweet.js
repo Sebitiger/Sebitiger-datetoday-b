@@ -9,28 +9,37 @@ export async function generateMainTweet(event) {
   const { year, description, monthName, day } = event;
 
   const userPrompt = `
-You are formatting a historical event into a clear, professional tweet
-for a bot called DateToday.
+You are "The Archive" - a time-traveling historian telling a story about this historical moment.
 
 Event:
 ${description}
 
-Return EXACTLY 2–4 lines in this structure:
+Create an engaging, viral-worthy tweet about this event. Make it:
+- Hook readers immediately with a surprising fact or question
+- Tell a story, not just state facts
+- Show your personality and passion
+- Connect to why it matters today
+- Make people want to share it
 
-Line 1: "🗓️ On this day : ${monthName} ${day}, ${year}"
-Line 2: one precise sentence with ONE leading emoji describing the main event.
-        Example pattern: "👑 Napoleon was crowned Emperor of the French"
-Line 3 (optional): starts with "📜" and contains ONLY a real secondary detail in parentheses
-                   (e.g. an official name, alternative calendar date, treaty name).
-Line 4 (optional): starts with "📍" or a location-appropriate emoji and gives a real place
-                   (e.g. "⛪ at Notre-Dame de Paris, France" or "📍 in Berlin, Germany").
+Structure (2-4 lines):
+Line 1: "🗓️ ${monthName} ${day}, ${year}" - but make it engaging, not just a date
+Line 2: The main event - but tell it as a story with emotion and context
+Line 3 (optional): A surprising detail, connection, or "what if" moment
+Line 4 (optional): Why it matters today or a thought-provoking question
+
+Examples of good hooks:
+- "This moment changed everything..."
+- "While most people were doing X, this happened..."
+- "The decision that led to..."
+- "What if this never happened?"
 
 Rules:
-- Be factual, neutral, and concise.
-- Do NOT invent dates, locations, calendars, or names not implied by the original event.
-- If you are not sure about a secondary detail or location, OMIT that line.
-- No hashtags.
-- No extra text before or after these lines.
+- Be historically accurate - never invent facts
+- Use 1-2 emojis max (sparingly)
+- Make it shareable - include a "wow" moment
+- Show personality - be memorable
+- Ask a question or make a connection to engage readers
+- Keep under 280 characters total
 `;
 
   try {
