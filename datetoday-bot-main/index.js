@@ -5,7 +5,7 @@ import { postEveningFact } from "./evening.js";
 import { postWeeklyThread } from "./weekly.js";
 import { monitorMentions } from "./engagement.js";
 import { postPoll } from "./polls.js";
-import { postWhatIfThread, postHiddenConnection } from "./viralContent.js";
+import { postWhatIfThread, postHiddenConnection, postQuickFact, postHistoryDebunk } from "./viralContent.js";
 import { info, error, warn } from "./logger.js";
 import { runHealthChecks } from "./health.js";
 import { cleanOldLogs } from "./logger.js";
@@ -107,6 +107,36 @@ cron.schedule("0 15 * * 5", async () => {
     await postHiddenConnection();
   } catch (err) {
     console.error("[Cron] Hidden Connection job failed:", err.message || err);
+  }
+}, { timezone: "UTC" });
+
+// Monday 12:00 UTC - Quick Fact (shareable, viral)
+cron.schedule("0 12 * * 1", async () => {
+  console.log("[Cron] Running Quick Fact job (Monday 12:00 UTC)");
+  try {
+    await postQuickFact();
+  } catch (err) {
+    console.error("[Cron] Quick Fact job failed:", err.message || err);
+  }
+}, { timezone: "UTC" });
+
+// Monday 15:00 UTC - History Debunk (correct misconceptions)
+cron.schedule("0 15 * * 1", async () => {
+  console.log("[Cron] Running History Debunk job (Monday 15:00 UTC)");
+  try {
+    await postHistoryDebunk();
+  } catch (err) {
+    console.error("[Cron] History Debunk job failed:", err.message || err);
+  }
+}, { timezone: "UTC" });
+
+// Saturday 12:00 UTC - Quick Fact (weekend engagement)
+cron.schedule("0 12 * * 6", async () => {
+  console.log("[Cron] Running Quick Fact job (Saturday 12:00 UTC)");
+  try {
+    await postQuickFact();
+  } catch (err) {
+    console.error("[Cron] Quick Fact job failed:", err.message || err);
   }
 }, { timezone: "UTC" });
 

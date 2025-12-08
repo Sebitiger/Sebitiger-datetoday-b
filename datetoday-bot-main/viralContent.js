@@ -147,3 +147,136 @@ export async function postHiddenConnection() {
   }
 }
 
+/**
+ * Generate "Quick Fact" - short, shareable historical fact
+ */
+export async function generateQuickFact() {
+  const userPrompt = `
+Create a short, surprising historical fact that will go viral.
+
+Requirements:
+- Under 200 characters
+- Surprising or "mind-blowing"
+- Shareable (makes people want to retweet)
+- Educational
+- Use 1 emoji max
+- Start with a hook: "Did you know..." or "In [year]..." or "Fun fact:"
+
+Example:
+"In 1969, we landed on the moon using less computing power than your smartphone. The Apollo guidance computer had 64KB of memory. Your phone? Millions of times more powerful. 🤯"
+
+Generate a viral quick fact now:
+`;
+
+  try {
+    const completion = await retryWithBackoff(async () => {
+      return await withTimeout(
+        openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: userPrompt },
+          ],
+          temperature: 0.8,
+          max_tokens: 150,
+        }),
+        OPENAI_TIMEOUT
+      );
+    });
+
+    const text = completion.choices[0]?.message?.content?.trim();
+    if (!text || text.length > 200) {
+      return null;
+    }
+    console.log("[Viral] Generated quick fact");
+    return text;
+  } catch (err) {
+    console.error("[Viral] Error generating quick fact:", err.message);
+    return null;
+  }
+}
+
+/**
+ * Post a quick fact
+ */
+export async function postQuickFact() {
+  try {
+    console.log("[Viral] Generating quick fact...");
+    const tweet = await generateQuickFact();
+    
+    if (!tweet) {
+      throw new Error("Failed to generate quick fact");
+    }
+
+    await postTweet(tweet);
+    console.log("[Viral] Quick fact posted successfully");
+  } catch (err) {
+    console.error("[Viral] Error posting quick fact:", err.message);
+  }
+}
+
+/**
+ * Generate "Debunking History" tweet
+ */
+export async function generateHistoryDebunk() {
+  const userPrompt = `
+Create a "Debunking History" tweet that corrects a popular misconception.
+
+Requirements:
+- Pick a well-known historical "fact" that's actually wrong
+- Explain the truth clearly
+- Make it shareable (people love being "in the know")
+- Write as a single tweet (under 280 chars)
+- Start with: "History myth:" or "Actually..." or "Here's the truth about..."
+- Be engaging and educational
+
+Generate a viral history debunk now:
+`;
+
+  try {
+    const completion = await retryWithBackoff(async () => {
+      return await withTimeout(
+        openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: userPrompt },
+          ],
+          temperature: 0.7,
+          max_tokens: 250,
+        }),
+        OPENAI_TIMEOUT
+      );
+    });
+
+    const text = completion.choices[0]?.message?.content?.trim();
+    if (!text || text.length > 280) {
+      return null;
+    }
+    console.log("[Viral] Generated history debunk");
+    return text;
+  } catch (err) {
+    console.error("[Viral] Error generating debunk:", err.message);
+    return null;
+  }
+}
+
+/**
+ * Post a history debunk
+ */
+export async function postHistoryDebunk() {
+  try {
+    console.log("[Viral] Generating history debunk...");
+    const tweet = await generateHistoryDebunk();
+    
+    if (!tweet) {
+      throw new Error("Failed to generate history debunk");
+    }
+
+    await postTweet(tweet);
+    console.log("[Viral] History debunk posted successfully");
+  } catch (err) {
+    console.error("[Viral] Error posting history debunk:", err.message);
+  }
+}
+
