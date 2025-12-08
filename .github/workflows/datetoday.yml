@@ -2,11 +2,16 @@ name: DateToday Bot
 
 on:
   schedule:
-    - cron: "0 9 * * *"
-    - cron: "0 14 * * 2,4"
-    - cron: "0 18 * * *"
-    - cron: "0 16 * * 0"
-  workflow_dispatch:
+    - cron: "0 9 * * *"     # Daily main tweet – 09:00 UTC
+    - cron: "0 12 * * 1"    # Quick Fact – Monday 12:00 UTC
+    - cron: "0 12 * * 3"    # What If thread – Wednesday 12:00 UTC
+    - cron: "0 12 * * 6"    # Quick Fact – Saturday 12:00 UTC
+    - cron: "0 14 * * 2,4"  # Polls – Tuesday & Thursday 14:00 UTC
+    - cron: "0 15 * * 1"    # History Debunk – Monday 15:00 UTC
+    - cron: "0 15 * * 5"    # Hidden Connection – Friday 15:00 UTC
+    - cron: "0 18 * * *"    # Evening extra fact – 18:00 UTC
+    - cron: "0 16 * * 0"    # Weekly thread – Sunday 16:00 UTC
+  workflow_dispatch:         # Allows manual test run
 
 jobs:
   run-bot:
@@ -29,22 +34,54 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Check if files are in subfolder
+        id: check_location
+        run: |
+          if [ -f "package.json" ]; then
+            echo "location=root" >> $GITHUB_OUTPUT
+          elif [ -f "datetoday-bot-main/package.json" ]; then
+            echo "location=subfolder" >> $GITHUB_OUTPUT
+          else
+            echo "location=unknown" >> $GITHUB_OUTPUT
+          fi
+
       - name: Install dependencies
-        run: npm install
-        working-directory: ./datetoday-bot-main
+        run: |
+          if [ "${{ steps.check_location.outputs.location }}" = "subfolder" ]; then
+            cd datetoday-bot-main
+          fi
+          npm install
 
       - name: Run correct script
         run: |
-          cd datetoday-bot-main
+          if [ "${{ steps.check_location.outputs.location }}" = "subfolder" ]; then
+            cd datetoday-bot-main
+          fi
+          
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "Manual run → running DAILY script"
             node runDaily.js
           elif [ "${{ github.event.schedule }}" = "0 9 * * *" ]; then
             echo "Cron 09:00 UTC → DAILY"
             node runDaily.js
+          elif [ "${{ github.event.schedule }}" = "0 12 * * 1" ]; then
+            echo "Cron 12:00 UTC Monday → QUICK FACT"
+            node -e "import('./viralContent.js').then(m => m.postQuickFact())"
+          elif [ "${{ github.event.schedule }}" = "0 12 * * 3" ]; then
+            echo "Cron 12:00 UTC Wednesday → WHAT IF"
+            node -e "import('./viralContent.js').then(m => m.postWhatIfThread())"
+          elif [ "${{ github.event.schedule }}" = "0 12 * * 6" ]; then
+            echo "Cron 12:00 UTC Saturday → QUICK FACT"
+            node -e "import('./viralContent.js').then(m => m.postQuickFact())"
           elif [ "${{ github.event.schedule }}" = "0 14 * * 2,4" ]; then
             echo "Cron 14:00 UTC Tue/Thu → POLL"
             node -e "import('./polls.js').then(m => m.postPoll())"
+          elif [ "${{ github.event.schedule }}" = "0 15 * * 1" ]; then
+            echo "Cron 15:00 UTC Monday → HISTORY DEBUNK"
+            node -e "import('./viralContent.js').then(m => m.postHistoryDebunk())"
+          elif [ "${{ github.event.schedule }}" = "0 15 * * 5" ]; then
+            echo "Cron 15:00 UTC Friday → HIDDEN CONNECTION"
+            node -e "import('./viralContent.js').then(m => m.postHiddenConnection())"
           elif [ "${{ github.event.schedule }}" = "0 18 * * *" ]; then
             echo "Cron 18:00 UTC → EVENING"
             node runEvening.js
