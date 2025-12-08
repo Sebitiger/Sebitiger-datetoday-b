@@ -17,6 +17,9 @@ Rules:
 - No emojis.
 - No hashtags.
 - No invented details.
+- CRITICAL: Keep under 270 characters total
+- Complete your sentences - never cut off mid-sentence
+- End with proper punctuation
 `;
 
   try {
@@ -35,10 +38,31 @@ Rules:
       );
     });
 
-    const text = completion.choices[0]?.message?.content?.trim();
+    let text = completion.choices[0]?.message?.content?.trim();
     if (!text) {
       throw new Error("Empty reply from OpenAI");
     }
+    
+    // Ensure text is complete (ends with punctuation)
+    if (text.length > 270) {
+      console.warn("[OpenAI] Generated reply is too long, truncating intelligently...");
+    }
+    
+    // Check if text ends mid-sentence
+    const lastChar = text[text.length - 1];
+    if (!['.', '!', '?', '…'].includes(lastChar) && text.length > 30) {
+      const lastSentenceEnd = Math.max(
+        text.lastIndexOf('.'),
+        text.lastIndexOf('!'),
+        text.lastIndexOf('?')
+      );
+      if (lastSentenceEnd > text.length * 0.6) {
+        text = text.slice(0, lastSentenceEnd + 1);
+      } else {
+        text = text.trim() + '.';
+      }
+    }
+    
     console.log("[OpenAI] Reply generated successfully");
     return text;
   } catch (err) {

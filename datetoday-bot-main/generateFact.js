@@ -7,11 +7,13 @@ const OPENAI_TIMEOUT = 30000; // 30 seconds
     const userPrompt = `
 Create one short, surprising historical fact that makes the reader feel smarter.
 Requirements:
-- max 230 characters
+- max 250 characters (to ensure complete sentences)
 - no emojis, no hashtags
 - must be factually correct (widely documented in history)
 - one or two short sentences
 - do NOT reference "today" or a specific date
+- CRITICAL: Complete your sentence - never cut off mid-sentence
+- Always end with proper punctuation
 `;
 
     try {

@@ -39,7 +39,9 @@ Rules:
 - Make it shareable - include a "wow" moment
 - Show personality - be memorable
 - Ask a question or make a connection to engage readers
-- Keep under 280 characters total
+- CRITICAL: Keep under 270 characters total (to ensure complete sentences)
+- Never cut off mid-sentence - if you can't fit it, make it shorter
+- Complete your thoughts - don't leave sentences unfinished
 `;
 
   try {
@@ -58,10 +60,33 @@ Rules:
       );
     });
 
-    const text = completion.choices[0]?.message?.content?.trim();
+    let text = completion.choices[0]?.message?.content?.trim();
     if (!text) {
       throw new Error("Empty main tweet from OpenAI");
     }
+    
+    // Ensure text is complete (ends with punctuation or is clearly finished)
+    if (text.length > 270) {
+      console.warn("[OpenAI] Generated tweet is too long, truncating intelligently...");
+      // The validateTweetText function will handle smart truncation
+    }
+    
+    // Check if text ends mid-sentence (no ending punctuation)
+    const lastChar = text[text.length - 1];
+    if (!['.', '!', '?', '…', ':', ')', '"', "'"].includes(lastChar) && text.length > 50) {
+      // If it seems cut off, try to complete it
+      const lastSentenceEnd = Math.max(
+        text.lastIndexOf('.'),
+        text.lastIndexOf('!'),
+        text.lastIndexOf('?')
+      );
+      if (lastSentenceEnd > text.length * 0.7) {
+        text = text.slice(0, lastSentenceEnd + 1);
+      } else {
+        text = text.trim() + '…';
+      }
+    }
+    
     console.log("[OpenAI] Main tweet generated successfully");
     return text;
   } catch (err) {

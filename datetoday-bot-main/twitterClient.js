@@ -25,6 +25,7 @@ const MAX_TWEET_LENGTH = 280;
 
 /**
  * Validates and trims tweet text to fit Twitter's character limit
+ * Smart truncation that doesn't cut mid-sentence
  * @param {string} text - Tweet text to validate
  * @returns {string} - Validated and trimmed text
  */
@@ -38,12 +39,41 @@ export function validateTweetText(text) {
     throw new Error("Tweet text cannot be empty");
   }
 
-  if (trimmed.length > MAX_TWEET_LENGTH) {
-    console.warn(`[Twitter] Tweet text exceeds ${MAX_TWEET_LENGTH} characters (${trimmed.length}), truncating...`);
-    return trimmed.slice(0, MAX_TWEET_LENGTH - 1) + "…";
+  // If already within limit, return as-is
+  if (trimmed.length <= MAX_TWEET_LENGTH) {
+    return trimmed;
   }
 
-  return trimmed;
+  console.warn(`[Twitter] Tweet text exceeds ${MAX_TWEET_LENGTH} characters (${trimmed.length}), truncating intelligently...`);
+  
+  // Smart truncation: try to cut at sentence boundaries first
+  const maxLength = MAX_TWEET_LENGTH - 3; // Reserve space for "…"
+  
+  // Try to find last sentence ending before limit
+  const sentenceEndings = ['. ', '! ', '? ', '.\n', '!\n', '?\n'];
+  let bestCut = maxLength;
+  let foundSentenceEnd = false;
+  
+  for (const ending of sentenceEndings) {
+    const lastIndex = trimmed.lastIndexOf(ending, maxLength);
+    if (lastIndex > maxLength * 0.7) { // Only use if it's not too early
+      bestCut = lastIndex + ending.length - 1;
+      foundSentenceEnd = true;
+      break;
+    }
+  }
+  
+  // If no sentence ending found, try word boundary
+  if (!foundSentenceEnd) {
+    const lastSpace = trimmed.lastIndexOf(' ', maxLength);
+    if (lastSpace > maxLength * 0.8) { // Only use if it's not too early
+      bestCut = lastSpace;
+    }
+  }
+  
+  // Truncate and add ellipsis
+  const truncated = trimmed.slice(0, bestCut).trim();
+  return truncated + (truncated.length < trimmed.length ? "…" : "");
 }
 
 /**

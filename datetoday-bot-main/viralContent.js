@@ -74,9 +74,11 @@ Requirements:
 - Find two seemingly unrelated events that happened around the same time
 - Show the fascinating connection
 - Make it shareable and "mind-blowing"
-- Write as a single engaging tweet (under 280 chars)
+- Write as a single engaging tweet (under 270 chars to ensure complete sentences)
 - Start with a hook: "The same year..." or "While X happened, Y was..."
 - End with a thought-provoking insight
+- CRITICAL: Complete your sentence - never cut off mid-sentence
+- Always end with proper punctuation
 
 Generate a viral hidden connection now:
 `;
@@ -97,10 +99,32 @@ Generate a viral hidden connection now:
       );
     });
 
-    const text = completion.choices[0]?.message?.content?.trim();
-    if (!text || text.length > 280) {
+    let text = completion.choices[0]?.message?.content?.trim();
+    if (!text) {
       return null;
     }
+    
+    // Ensure complete sentence
+    if (text.length > 280) {
+      // Smart truncation
+      const lastSentenceEnd = Math.max(
+        text.lastIndexOf('.'),
+        text.lastIndexOf('!'),
+        text.lastIndexOf('?')
+      );
+      if (lastSentenceEnd > text.length * 0.7) {
+        text = text.slice(0, lastSentenceEnd + 1);
+      } else {
+        return null; // Can't truncate safely
+      }
+    }
+    
+    // Ensure it ends with punctuation
+    const lastChar = text[text.length - 1];
+    if (!['.', '!', '?', '…'].includes(lastChar)) {
+      text = text.trim() + '.';
+    }
+    
     console.log("[Viral] Generated hidden connection");
     return text;
   } catch (err) {
@@ -155,12 +179,14 @@ export async function generateQuickFact() {
 Create a short, surprising historical fact that will go viral.
 
 Requirements:
-- Under 200 characters
+- Under 250 characters (to ensure complete sentences)
 - Surprising or "mind-blowing"
 - Shareable (makes people want to retweet)
 - Educational
 - Use 1 emoji max
 - Start with a hook: "Did you know..." or "In [year]..." or "Fun fact:"
+- CRITICAL: Complete your sentence - never cut off mid-sentence
+- Always end with proper punctuation
 
 Example:
 "In 1969, we landed on the moon using less computing power than your smartphone. The Apollo guidance computer had 64KB of memory. Your phone? Millions of times more powerful. 🤯"
@@ -184,10 +210,31 @@ Generate a viral quick fact now:
       );
     });
 
-    const text = completion.choices[0]?.message?.content?.trim();
-    if (!text || text.length > 200) {
+    let text = completion.choices[0]?.message?.content?.trim();
+    if (!text) {
       return null;
     }
+    
+    // Ensure complete sentence
+    if (text.length > 280) {
+      const lastSentenceEnd = Math.max(
+        text.lastIndexOf('.'),
+        text.lastIndexOf('!'),
+        text.lastIndexOf('?')
+      );
+      if (lastSentenceEnd > text.length * 0.7) {
+        text = text.slice(0, lastSentenceEnd + 1);
+      } else {
+        return null;
+      }
+    }
+    
+    // Ensure it ends with punctuation
+    const lastChar = text[text.length - 1];
+    if (!['.', '!', '?', '…'].includes(lastChar)) {
+      text = text.trim() + '.';
+    }
+    
     console.log("[Viral] Generated quick fact");
     return text;
   } catch (err) {
@@ -226,9 +273,11 @@ Requirements:
 - Pick a well-known historical "fact" that's actually wrong
 - Explain the truth clearly
 - Make it shareable (people love being "in the know")
-- Write as a single tweet (under 280 chars)
+- Write as a single tweet (under 270 chars to ensure complete sentences)
 - Start with: "History myth:" or "Actually..." or "Here's the truth about..."
 - Be engaging and educational
+- CRITICAL: Complete your sentence - never cut off mid-sentence
+- Always end with proper punctuation
 
 Generate a viral history debunk now:
 `;
@@ -249,10 +298,31 @@ Generate a viral history debunk now:
       );
     });
 
-    const text = completion.choices[0]?.message?.content?.trim();
-    if (!text || text.length > 280) {
+    let text = completion.choices[0]?.message?.content?.trim();
+    if (!text) {
       return null;
     }
+    
+    // Ensure complete sentence
+    if (text.length > 280) {
+      const lastSentenceEnd = Math.max(
+        text.lastIndexOf('.'),
+        text.lastIndexOf('!'),
+        text.lastIndexOf('?')
+      );
+      if (lastSentenceEnd > text.length * 0.7) {
+        text = text.slice(0, lastSentenceEnd + 1);
+      } else {
+        return null;
+      }
+    }
+    
+    // Ensure it ends with punctuation
+    const lastChar = text[text.length - 1];
+    if (!['.', '!', '?', '…'].includes(lastChar)) {
+      text = text.trim() + '.';
+    }
+    
     console.log("[Viral] Generated history debunk");
     return text;
   } catch (err) {
