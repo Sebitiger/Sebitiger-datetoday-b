@@ -2,11 +2,11 @@ name: DateToday Bot
 
 on:
   schedule:
-    - cron: "0 9 * * *"     # Daily main tweet – 09:00 UTC
-    - cron: "0 14 * * 2,4"  # Polls – Tuesday & Thursday 14:00 UTC
-    - cron: "0 18 * * *"    # Evening extra fact – 18:00 UTC
-    - cron: "0 16 * * 0"    # Weekly thread – Sunday 16:00 UTC
-  workflow_dispatch:         # Allows manual test run
+    - cron: "0 9 * * *"
+    - cron: "0 14 * * 2,4"
+    - cron: "0 18 * * *"
+    - cron: "0 16 * * 0"
+  workflow_dispatch:
 
 jobs:
   run-bot:
@@ -31,9 +31,11 @@ jobs:
 
       - name: Install dependencies
         run: npm install
+        working-directory: ./datetoday-bot-main
 
       - name: Run correct script
         run: |
+          cd datetoday-bot-main
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "Manual run → running DAILY script"
             node runDaily.js
