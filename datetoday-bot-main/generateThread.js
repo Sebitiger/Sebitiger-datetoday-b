@@ -1,22 +1,24 @@
 import { openai, SYSTEM_PROMPT } from "./openaiCommon.js";
-import { withTimeout, retryWithBackoff } from "./utils.js";
+import { withTimeout, retryWithBackoff, cleanAIContent } from "./utils.js";
 
 const OPENAI_TIMEOUT = 60000; // 60 seconds for longer threads
 
   export async function generateWeeklyThread(event) {
     const { year, description, wikipediaTitle } = event;
-    const base = `${year} — ${description}${wikipediaTitle ? " (Related: " + wikipediaTitle + ")" : ""}`;
+    const base = `${year}: ${description}${wikipediaTitle ? " (Related: " + wikipediaTitle + ")" : ""}`;
 
     const userPrompt = `
 You are writing a Twitter thread for DateToday based on this historical event:
 
 ${base}
 
-Write a 5–7 tweet thread.
+Write a 5-7 tweet thread.
 Each tweet:
-- 1–2 short sentences
+- 1-2 short sentences
 - no emojis, no hashtags
 - must stand alone but also flow with the others
+- NEVER use em dashes (—) - use commas, periods, or regular hyphens instead
+- Write naturally like a human, not like AI-generated content
 
 Structure:
 1) Hook: why this event is fascinating or important.
@@ -50,7 +52,7 @@ Write each tweet on its own line, with no numbering and no extra text.
       const raw = completion.choices[0]?.message?.content || "";
       const lines = raw
         .split("\n")
-        .map(l => l.trim())
+        .map(l => cleanAIContent(l.trim())) // Clean each tweet
         .filter(Boolean);
 
       const tweets = lines.slice(0, 7); // safety limit

@@ -54,3 +54,43 @@ export async function withTimeout(promise, timeoutMs) {
   return Promise.race([promise, createTimeout(timeoutMs)]);
 }
 
+/**
+ * Cleans AI-generated artifacts from text to make it sound more natural
+ * Removes em dashes, fixes common AI patterns, etc.
+ * @param {string} text - Text to clean
+ * @returns {string} - Cleaned text
+ */
+export function cleanAIContent(text) {
+  if (!text || typeof text !== "string") {
+    return text;
+  }
+
+  let cleaned = text;
+
+  // Replace em dashes (—) with more natural punctuation
+  // Pattern: "word—word" becomes "word, word" or "word. Word" depending on context
+  cleaned = cleaned.replace(/—/g, (match, offset, string) => {
+    const before = string[offset - 1];
+    const after = string[offset + 1];
+    
+    // If it's between words, use comma
+    if (before && after && before !== ' ' && after !== ' ') {
+      return ', ';
+    }
+    // If it's after a space, it's likely a dash for emphasis - use period
+    if (before === ' ') {
+      return '. ';
+    }
+    // Default to comma
+    return ', ';
+  });
+
+  // Fix double spaces
+  cleaned = cleaned.replace(/\s+/g, ' ');
+
+  // Fix spaces before punctuation
+  cleaned = cleaned.replace(/\s+([.,!?;:])/g, '$1');
+
+  return cleaned.trim();
+}
+

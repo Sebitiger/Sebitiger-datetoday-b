@@ -2,7 +2,7 @@
 // Generate and post interactive polls to drive engagement
 
 import { openai, SYSTEM_PROMPT } from "./openaiCommon.js";
-import { withTimeout, retryWithBackoff } from "./utils.js";
+import { withTimeout, retryWithBackoff, cleanAIContent } from "./utils.js";
 import { client } from "./twitterClient.js";
 
 const OPENAI_TIMEOUT = 30000;
@@ -21,6 +21,8 @@ Requirements:
 - Make it fun and shareable
 - Keep question under 100 characters
 - Each option under 25 characters
+- NEVER use em dashes (—) - use commas, periods, or regular hyphens instead
+- Write naturally like a human, not like AI-generated content
 
 Format your response as:
 QUESTION: [question text]
@@ -55,7 +57,9 @@ ANSWER: D - The Byzantine Empire lasted over 1,100 years (330-1453 AD)
       );
     });
 
-    const text = completion.choices[0]?.message?.content?.trim();
+    let text = completion.choices[0]?.message?.content?.trim();
+    // Clean AI-generated artifacts (em dashes, etc.)
+    text = cleanAIContent(text);
     return parsePollResponse(text);
   } catch (err) {
     console.error("[Polls] Error generating poll:", err.message);
@@ -80,15 +84,15 @@ function parsePollResponse(text) {
     }
 
     return {
-      question: questionMatch[1].trim(),
+      question: cleanAIContent(questionMatch[1].trim()),
       options: [
-        optionAMatch[1].trim(),
-        optionBMatch[1].trim(),
-        optionCMatch[1].trim(),
-        optionDMatch[1].trim(),
+        cleanAIContent(optionAMatch[1].trim()),
+        cleanAIContent(optionBMatch[1].trim()),
+        cleanAIContent(optionCMatch[1].trim()),
+        cleanAIContent(optionDMatch[1].trim()),
       ],
       correctAnswer: answerMatch ? answerMatch[1].trim() : null,
-      explanation: answerMatch ? answerMatch[2].trim() : null,
+      explanation: answerMatch ? cleanAIContent(answerMatch[2].trim()) : null,
     };
   } catch (err) {
     console.error("[Polls] Error parsing poll:", err.message);
@@ -166,6 +170,8 @@ Format:
 EVENT: [description of event]
 YEAR: [actual year]
 OPTIONS: [year1, year2, year3, year4] (one correct, three plausible but wrong)
+- NEVER use em dashes (—) - use commas, periods, or regular hyphens instead
+- Write naturally like a human, not like AI-generated content
 
 Example:
 EVENT: The first successful airplane flight by the Wright brothers
@@ -189,7 +195,10 @@ OPTIONS: 1898, 1903, 1910, 1907
       );
     });
 
-    const text = completion.choices[0]?.message?.content?.trim();
+    let text = completion.choices[0]?.message?.content?.trim();
+    // Clean AI-generated artifacts (em dashes, etc.)
+    text = cleanAIContent(text);
+    
     const eventMatch = text.match(/EVENT:\s*(.+)/i);
     const yearMatch = text.match(/YEAR:\s*(\d+)/i);
     const optionsMatch = text.match(/OPTIONS:\s*(.+)/i);
@@ -198,11 +207,11 @@ OPTIONS: 1898, 1903, 1910, 1907
       return null;
     }
 
-    const options = optionsMatch[1].split(',').map(o => o.trim());
+    const options = optionsMatch[1].split(',').map(o => cleanAIContent(o.trim()));
     const correctYear = yearMatch[1];
 
     return {
-      question: `In what year did this happen?\n\n${eventMatch[1]}`,
+      question: `In what year did this happen?\n\n${cleanAIContent(eventMatch[1])}`,
       options: options,
       correctAnswer: correctYear,
     };

@@ -1,5 +1,5 @@
 import { openai, SYSTEM_PROMPT } from "./openaiCommon.js";
-import { withTimeout, retryWithBackoff } from "./utils.js";
+import { withTimeout, retryWithBackoff, cleanAIContent } from "./utils.js";
 
 const OPENAI_TIMEOUT = 30000; // 30 seconds
 
@@ -14,6 +14,8 @@ Requirements:
 - do NOT reference "today" or a specific date
 - CRITICAL: Complete your sentence - never cut off mid-sentence
 - Always end with proper punctuation
+- NEVER use em dashes (—) - use commas, periods, or regular hyphens instead
+- Write naturally like a human, not like AI-generated content
 `;
 
     try {
@@ -32,10 +34,14 @@ Requirements:
         );
       });
 
-      const text = completion.choices[0]?.message?.content?.trim();
+      let text = completion.choices[0]?.message?.content?.trim();
       if (!text) {
         throw new Error("Empty fact content from OpenAI");
       }
+      
+      // Clean AI-generated artifacts (em dashes, etc.)
+      text = cleanAIContent(text);
+      
       console.log("[OpenAI] Generated evening fact.");
       return text;
     } catch (err) {

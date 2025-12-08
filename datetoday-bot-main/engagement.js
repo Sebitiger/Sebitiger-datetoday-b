@@ -4,7 +4,7 @@
 import { client } from "./twitterClient.js";
 import { openai, SYSTEM_PROMPT } from "./openaiCommon.js";
 import { postTweet } from "./twitterClient.js";
-import { withTimeout, retryWithBackoff } from "./utils.js";
+import { withTimeout, retryWithBackoff, cleanAIContent } from "./utils.js";
 import { getEventForDate } from "./fetchEvents.js";
 
 const OPENAI_TIMEOUT = 30000;
@@ -56,6 +56,8 @@ Generate a helpful, engaging reply that:
 - If they asked "what happened on [date]", fetch and share that event
 - Use 1-2 emojis max if appropriate
 - End with a question or invitation to engage more
+- NEVER use em dashes (—) - use commas, periods, or regular hyphens instead
+- Write naturally like a human, not like AI-generated content
 
 Examples of good replies:
 - "Great question! On [date], [event]. What fascinates you most about this period?"
@@ -81,11 +83,15 @@ Generate the reply now:
       );
     });
 
-    const reply = completion.choices[0]?.message?.content?.trim();
+    let reply = completion.choices[0]?.message?.content?.trim();
     if (!reply || reply.length > 240) {
       // Fallback
       return `Thanks for the mention! I'm DateToday, your friendly historian bot. Ask me about any date in history, and I'll share what happened! 📚`;
     }
+    
+    // Clean AI-generated artifacts (em dashes, etc.)
+    reply = cleanAIContent(reply);
+    
     return reply;
   } catch (err) {
     console.error("[Engagement] Error generating reply:", err.message);

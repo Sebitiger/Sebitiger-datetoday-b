@@ -1,7 +1,7 @@
 // generateTweet.js
 
 import { openai, SYSTEM_PROMPT } from "./openaiCommon.js";
-import { withTimeout, retryWithBackoff } from "./utils.js";
+import { withTimeout, retryWithBackoff, cleanAIContent } from "./utils.js";
 
 const OPENAI_TIMEOUT = 30000; // 30 seconds
 
@@ -42,6 +42,8 @@ Rules:
 - CRITICAL: Keep under 270 characters total (to ensure complete sentences)
 - Never cut off mid-sentence - if you can't fit it, make it shorter
 - Complete your thoughts - don't leave sentences unfinished
+- NEVER use em dashes (—) - use commas, periods, or regular hyphens instead
+- Write naturally like a human, not like AI-generated content
 `;
 
   try {
@@ -64,6 +66,9 @@ Rules:
     if (!text) {
       throw new Error("Empty main tweet from OpenAI");
     }
+    
+    // Clean AI-generated artifacts (em dashes, etc.)
+    text = cleanAIContent(text);
     
     // Ensure text is complete (ends with punctuation or is clearly finished)
     if (text.length > 270) {

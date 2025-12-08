@@ -2,7 +2,7 @@
 // Advanced content generators for viral historian persona
 
 import { openai, SYSTEM_PROMPT } from "./openaiCommon.js";
-import { withTimeout, retryWithBackoff } from "./utils.js";
+import { withTimeout, retryWithBackoff, cleanAIContent } from "./utils.js";
 import { postTweet, postThread } from "./twitterClient.js";
 
 const OPENAI_TIMEOUT = 60000; // 60 seconds for longer content
@@ -22,6 +22,8 @@ Requirements:
 - Start with a hook: "What if [event] never happened?"
 - Build suspense and show the ripple effects
 - End with a question that sparks discussion
+- NEVER use em dashes (—) - use commas, periods, or regular hyphens instead
+- Write naturally like a human, not like AI-generated content
 
 Format each tweet on a new line, no numbering.
 
@@ -47,7 +49,7 @@ Generate a viral "What If" scenario now:
     const raw = completion.choices[0]?.message?.content || "";
     const tweets = raw
       .split("\n")
-      .map(l => l.trim())
+      .map(l => cleanAIContent(l.trim())) // Clean each tweet
       .filter(l => l.length > 0 && !l.match(/^Tweet \d+:/i))
       .slice(0, 7);
 
@@ -79,6 +81,8 @@ Requirements:
 - End with a thought-provoking insight
 - CRITICAL: Complete your sentence - never cut off mid-sentence
 - Always end with proper punctuation
+- NEVER use em dashes (—) - use commas, periods, or regular hyphens instead
+- Write naturally like a human, not like AI-generated content
 
 Generate a viral hidden connection now:
 `;
@@ -103,6 +107,9 @@ Generate a viral hidden connection now:
     if (!text) {
       return null;
     }
+    
+    // Clean AI-generated artifacts (em dashes, etc.)
+    text = cleanAIContent(text);
     
     // Ensure complete sentence
     if (text.length > 280) {
@@ -187,6 +194,8 @@ Requirements:
 - Start with a hook: "Did you know..." or "In [year]..." or "Fun fact:"
 - CRITICAL: Complete your sentence - never cut off mid-sentence
 - Always end with proper punctuation
+- NEVER use em dashes (—) - use commas, periods, or regular hyphens instead
+- Write naturally like a human, not like AI-generated content
 
 Example:
 "In 1969, we landed on the moon using less computing power than your smartphone. The Apollo guidance computer had 64KB of memory. Your phone? Millions of times more powerful. 🤯"
@@ -214,6 +223,9 @@ Generate a viral quick fact now:
     if (!text) {
       return null;
     }
+    
+    // Clean AI-generated artifacts (em dashes, etc.)
+    text = cleanAIContent(text);
     
     // Ensure complete sentence
     if (text.length > 280) {
@@ -278,6 +290,8 @@ Requirements:
 - Be engaging and educational
 - CRITICAL: Complete your sentence - never cut off mid-sentence
 - Always end with proper punctuation
+- NEVER use em dashes (—) - use commas, periods, or regular hyphens instead
+- Write naturally like a human, not like AI-generated content
 
 Generate a viral history debunk now:
 `;
@@ -302,6 +316,9 @@ Generate a viral history debunk now:
     if (!text) {
       return null;
     }
+    
+    // Clean AI-generated artifacts (em dashes, etc.)
+    text = cleanAIContent(text);
     
     // Ensure complete sentence
     if (text.length > 280) {

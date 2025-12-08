@@ -1,7 +1,7 @@
 // generateReply.js
 
 import { openai, SYSTEM_PROMPT } from "./openaiCommon.js";
-import { withTimeout, retryWithBackoff } from "./utils.js";
+import { withTimeout, retryWithBackoff, cleanAIContent } from "./utils.js";
 
 const OPENAI_TIMEOUT = 30000; // 30 seconds
 
@@ -20,6 +20,8 @@ Rules:
 - CRITICAL: Keep under 270 characters total
 - Complete your sentences - never cut off mid-sentence
 - End with proper punctuation
+- NEVER use em dashes (—) - use commas, periods, or regular hyphens instead
+- Write naturally like a human, not like AI-generated content
 `;
 
   try {
@@ -42,6 +44,9 @@ Rules:
     if (!text) {
       throw new Error("Empty reply from OpenAI");
     }
+    
+    // Clean AI-generated artifacts (em dashes, etc.)
+    text = cleanAIContent(text);
     
     // Ensure text is complete (ends with punctuation)
     if (text.length > 270) {
