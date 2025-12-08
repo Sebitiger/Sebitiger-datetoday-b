@@ -1,6 +1,7 @@
 import { getEventForDate } from "./fetchEvents.js";
 import { generateWeeklyThread } from "./generateThread.js";
 import { postThread } from "./twitterClient.js";
+import { fetchEventImage } from "./fetchImage.js";
 
 export async function postWeeklyThread() {
   console.log("[Weekly] Starting weekly thread job...");
@@ -16,7 +17,21 @@ export async function postWeeklyThread() {
       throw new Error("No tweets generated for weekly thread");
     }
 
-    await postThread(tweets);
+    // Try to fetch an image for the event
+    let imageBuffer = null;
+    try {
+      console.log("[Weekly] Attempting to fetch image for weekly thread...");
+      imageBuffer = await fetchEventImage(event);
+      if (imageBuffer) {
+        console.log("[Weekly] Image fetched successfully for weekly thread.");
+      } else {
+        console.log("[Weekly] No image found for weekly thread, posting text-only.");
+      }
+    } catch (imgErr) {
+      console.error("[Weekly] Image fetch error for weekly thread:", imgErr.message || imgErr);
+    }
+
+    await postThread(tweets, imageBuffer);
     console.log("[Weekly] Weekly thread job completed successfully.");
   } catch (err) {
     console.error("[Weekly] Job failed:", err.message || err);

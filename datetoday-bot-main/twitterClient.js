@@ -155,8 +155,9 @@ export async function postTweetWithImage(text, imageBuffer, replyToId = null) {
 /**
  * Post a thread (multiple tweets as replies to each other).
  * @param {string[]} tweets - Array of tweet texts
+ * @param {Buffer|null} imageBuffer - Optional image buffer for the first tweet
  */
-export async function postThread(tweets) {
+export async function postThread(tweets, imageBuffer = null) {
   try {
     if (!tweets || !Array.isArray(tweets) || !tweets.length) {
       throw new Error("Tweets must be a non-empty array");
@@ -180,15 +181,20 @@ export async function postThread(tweets) {
       console.log(`[Twitter] Posting thread tweet ${i + 1}/${validatedTweets.length}...`);
 
       if (i === 0) {
-        // First tweet - no reply
-        const res = await client.v2.tweet({ text: tweetText });
-        previousTweetId = res.data.id;
-        console.log(`[Twitter] Thread tweet ${i + 1} posted. ID:`, previousTweetId);
+        // First tweet - can have image
+        if (imageBuffer && Buffer.isBuffer(imageBuffer)) {
+          previousTweetId = await postTweetWithImage(tweetText, imageBuffer, null);
+          console.log(`[Twitter] Thread tweet ${i + 1} posted with image. ID:`, previousTweetId);
+        } else {
+          const res = await client.v2.tweet({ text: tweetText });
+          previousTweetId = res.data.id;
+          console.log(`[Twitter] Thread tweet ${i + 1} posted. ID:`, previousTweetId);
+        }
       } else {
         if (!previousTweetId) {
           throw new Error("Failed to get tweet ID from previous tweet in thread");
         }
-        // Subsequent tweets - reply to previous
+        // Subsequent tweets - reply to previous (no images)
         const res = await client.v2.tweet({
           text: tweetText,
           reply: { in_reply_to_tweet_id: String(previousTweetId) },

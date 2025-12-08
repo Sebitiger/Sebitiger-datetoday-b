@@ -3,7 +3,8 @@
 
 import { openai, SYSTEM_PROMPT } from "./openaiCommon.js";
 import { withTimeout, retryWithBackoff, cleanAIContent } from "./utils.js";
-import { postTweet, postThread } from "./twitterClient.js";
+import { postTweet, postThread, postTweetWithImage } from "./twitterClient.js";
+import { fetchImageForText, fetchEventImage } from "./fetchImage.js";
 
 const OPENAI_TIMEOUT = 60000; // 60 seconds for longer content
 
@@ -152,7 +153,21 @@ export async function postWhatIfThread() {
       throw new Error("Failed to generate What If scenario");
     }
 
-    await postThread(tweets);
+    // Try to fetch an image based on the first tweet content
+    let imageBuffer = null;
+    try {
+      console.log("[Viral] Attempting to fetch image for What If thread...");
+      imageBuffer = await fetchImageForText(tweets[0]);
+      if (imageBuffer) {
+        console.log("[Viral] Image fetched successfully for What If thread.");
+      } else {
+        console.log("[Viral] No image found for What If thread, posting text-only.");
+      }
+    } catch (imgErr) {
+      console.error("[Viral] Image fetch error for What If thread:", imgErr.message || imgErr);
+    }
+
+    await postThread(tweets, imageBuffer);
     console.log("[Viral] What If thread posted successfully");
   } catch (err) {
     console.error("[Viral] Error posting What If thread:", err.message);
@@ -171,7 +186,25 @@ export async function postHiddenConnection() {
       throw new Error("Failed to generate hidden connection");
     }
 
-    await postTweet(tweet);
+    // Try to fetch an image based on the tweet content
+    let imageBuffer = null;
+    try {
+      console.log("[Viral] Attempting to fetch image for hidden connection...");
+      imageBuffer = await fetchImageForText(tweet);
+      if (imageBuffer) {
+        console.log("[Viral] Image fetched successfully for hidden connection.");
+      } else {
+        console.log("[Viral] No image found for hidden connection, posting text-only.");
+      }
+    } catch (imgErr) {
+      console.error("[Viral] Image fetch error for hidden connection:", imgErr.message || imgErr);
+    }
+
+    if (imageBuffer) {
+      await postTweetWithImage(tweet, imageBuffer, null);
+    } else {
+      await postTweet(tweet);
+    }
     console.log("[Viral] Hidden connection posted successfully");
   } catch (err) {
     console.error("[Viral] Error posting hidden connection:", err.message);
@@ -267,7 +300,25 @@ export async function postQuickFact() {
       throw new Error("Failed to generate quick fact");
     }
 
-    await postTweet(tweet);
+    // Try to fetch an image based on the tweet content
+    let imageBuffer = null;
+    try {
+      console.log("[Viral] Attempting to fetch image for quick fact...");
+      imageBuffer = await fetchImageForText(tweet);
+      if (imageBuffer) {
+        console.log("[Viral] Image fetched successfully for quick fact.");
+      } else {
+        console.log("[Viral] No image found for quick fact, posting text-only.");
+      }
+    } catch (imgErr) {
+      console.error("[Viral] Image fetch error for quick fact:", imgErr.message || imgErr);
+    }
+
+    if (imageBuffer) {
+      await postTweetWithImage(tweet, imageBuffer, null);
+    } else {
+      await postTweet(tweet);
+    }
     console.log("[Viral] Quick fact posted successfully");
   } catch (err) {
     console.error("[Viral] Error posting quick fact:", err.message);
@@ -360,7 +411,25 @@ export async function postHistoryDebunk() {
       throw new Error("Failed to generate history debunk");
     }
 
-    await postTweet(tweet);
+    // Try to fetch an image based on the tweet content
+    let imageBuffer = null;
+    try {
+      console.log("[Viral] Attempting to fetch image for history debunk...");
+      imageBuffer = await fetchImageForText(tweet);
+      if (imageBuffer) {
+        console.log("[Viral] Image fetched successfully for history debunk.");
+      } else {
+        console.log("[Viral] No image found for history debunk, posting text-only.");
+      }
+    } catch (imgErr) {
+      console.error("[Viral] Image fetch error for history debunk:", imgErr.message || imgErr);
+    }
+
+    if (imageBuffer) {
+      await postTweetWithImage(tweet, imageBuffer, null);
+    } else {
+      await postTweet(tweet);
+    }
     console.log("[Viral] History debunk posted successfully");
   } catch (err) {
     console.error("[Viral] Error posting history debunk:", err.message);
