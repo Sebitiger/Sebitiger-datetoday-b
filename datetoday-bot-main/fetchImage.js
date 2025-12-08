@@ -1,41 +1,18 @@
 // fetchImage.js
-// Safe, stable Wikipedia image fetcher
+// Safe, stable Wikipedia image fetcher with multiple fallback strategies
 // Always returns: Buffer OR null
 
 import axios from "axios";
 import sharp from "sharp";
+import { retryWithBackoff } from "./utils.js";
 
-export async function fetchEventImage(event) {
+/**
+ * Try to fetch image from a Wikipedia page
+ * @param {number} pageId - Wikipedia page ID
+ * @returns {Promise<Buffer|null>} - Image buffer or null
+ */
+async function fetchImageFromPageId(pageId) {
   try {
-    // Use the first 8–10 words of the event description as a search query
-    const query = event.description.split(" ").slice(0, 10).join(" ");
-
-    console.log("[Image] Searching Wikipedia for:", query);
-
-    // 1. Search Wikipedia
-    const searchRes = await axios.get(
-      "https://en.wikipedia.org/w/api.php",
-      {
-        params: {
-          action: "query",
-          list: "search",
-          srsearch: query,
-          format: "json",
-          srlimit: 1,
-          origin: "*",
-        },
-      }
-    );
-
-    const page = searchRes.data?.query?.search?.[0];
-    if (!page) {
-      console.log("[Image] No matching Wikipedia page.");
-      return null;
-    }
-
-    const pageId = page.pageid;
-
-    // 2. Get page info + thumbnail (larger size for better quality)
     const pageInfoRes = await axios.get(
       "https://en.wikipedia.org/w/api.php",
       {
@@ -43,69 +20,201 @@ export async function fetchEventImage(event) {
           action: "query",
           pageids: pageId,
           prop: "pageimages",
-          pithumbsize: 1200, // Increased from 800 for better quality
+          pithumbsize: 1200,
           format: "json",
           origin: "*",
         },
+        timeout: 10000,
       }
     );
 
     const pageInfo = pageInfoRes.data?.query?.pages?.[pageId];
-
     if (!pageInfo?.thumbnail?.source) {
-      console.log("[Image] No thumbnail available.");
       return null;
     }
 
     const imageUrl = pageInfo.thumbnail.source;
-    console.log("[Image] Thumbnail URL:", imageUrl);
+    console.log("[Image] Found thumbnail URL:", imageUrl);
 
-    // 3. Download the image
-    const imgRes = await axios.get(imageUrl, {
-      responseType: "arraybuffer",
-      timeout: 10000, // 10 second timeout
-    });
+    // Download with retry
+    const imgRes = await retryWithBackoff(async () => {
+      return await axios.get(imageUrl, {
+        responseType: "arraybuffer",
+        timeout: 10000,
+      });
+    }, 2, 1000);
 
     const rawImageBuffer = Buffer.from(imgRes.data);
+    return await processImageBuffer(rawImageBuffer);
+  } catch (err) {
+    console.log("[Image] Failed to fetch from page ID:", pageId, err.message);
+    return null;
+  }
+}
+
+/**
+ * Process image buffer to optimal Twitter format
+ */
+async function processImageBuffer(rawImageBuffer) {
+  try {
+    const targetWidth = 1200;
+    const targetHeight = 600;
     
-    // 4. Process and optimize image using sharp
-    // Twitter optimal: 2:1 aspect ratio (1200x600px) for best timeline display
-    // This maximizes visibility and engagement - images with 2:1 ratio get 150% more engagement
-    try {
-      const targetWidth = 1200;
-      const targetHeight = 600;
-      
-      // Use center crop to create consistent 2:1 ratio (optimal for Twitter timeline)
-      const processedBuffer = await sharp(rawImageBuffer)
-        .resize(targetWidth, targetHeight, {
-          fit: "cover", // Crop to fill for optimal Twitter display
-          position: "center", // Center crop for best composition
+    const processedBuffer = await sharp(rawImageBuffer)
+      .resize(targetWidth, targetHeight, {
+        fit: "cover",
+        position: "center",
+      })
+      .jpeg({ quality: 90, mozjpeg: true })
+      .toBuffer();
+    
+    console.log("[Image] Image processed. Size:", (processedBuffer.length / 1024).toFixed(2), "KB");
+    
+    if (processedBuffer.length > 5 * 1024 * 1024) {
+      console.warn("[Image] Image too large, reducing quality...");
+      return await sharp(rawImageBuffer)
+        .resize(1000, 500, {
+          fit: "cover",
+          position: "center",
         })
-        .jpeg({ quality: 90, mozjpeg: true }) // Higher quality for viral content
+        .jpeg({ quality: 85, mozjpeg: true })
         .toBuffer();
-      
-      console.log("[Image] Image processed with 2:1 aspect ratio (optimal for Twitter). Size:", (processedBuffer.length / 1024).toFixed(2), "KB");
-      
-      // Check file size (Twitter limit is 5MB)
-      if (processedBuffer.length > 5 * 1024 * 1024) {
-        console.warn("[Image] Processed image exceeds 5MB, using smaller size...");
-        return await sharp(rawImageBuffer)
-          .resize(1000, 500, {
-            fit: "cover",
-            position: "center",
-          })
-          .jpeg({ quality: 85, mozjpeg: true })
-          .toBuffer();
-      }
-      
-      return processedBuffer;
-
-    } catch (sharpErr) {
-      console.error("[Image] Sharp processing error, using original:", sharpErr.message);
-      // Fallback to original if sharp fails
-      return rawImageBuffer;
     }
+    
+    return processedBuffer;
+  } catch (sharpErr) {
+    console.error("[Image] Sharp processing error:", sharpErr.message);
+    return rawImageBuffer; // Fallback to original
+  }
+}
 
+/**
+ * Search Wikipedia with multiple query strategies
+ */
+async function searchWikipediaMultipleStrategies(event) {
+  const strategies = [];
+  
+  // Strategy 1: Full description (first 10 words)
+  strategies.push(event.description.split(" ").slice(0, 10).join(" "));
+  
+  // Strategy 2: First 5 words (more focused)
+  strategies.push(event.description.split(" ").slice(0, 5).join(" "));
+  
+  // Strategy 3: Extract key nouns (capitalized words)
+  const capitalizedWords = event.description
+    .split(" ")
+    .filter(word => word.length > 3 && word[0] === word[0].toUpperCase())
+    .slice(0, 5)
+    .join(" ");
+  if (capitalizedWords.length > 5) {
+    strategies.push(capitalizedWords);
+  }
+  
+  // Strategy 4: Year + first 3 words (e.g., "1969 Apollo moon")
+  if (event.year) {
+    strategies.push(`${event.year} ${event.description.split(" ").slice(0, 3).join(" ")}`);
+  }
+  
+  // Strategy 5: Remove common words, keep important terms
+  const importantWords = event.description
+    .split(" ")
+    .filter(word => {
+      const lower = word.toLowerCase();
+      return !["the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by"].includes(lower) &&
+             word.length > 3;
+    })
+    .slice(0, 6)
+    .join(" ");
+  if (importantWords.length > 5) {
+    strategies.push(importantWords);
+  }
+
+  // Try each strategy
+  for (const query of strategies) {
+    if (!query || query.trim().length < 3) continue;
+    
+    try {
+      console.log("[Image] Trying search strategy:", query);
+      
+      const searchRes = await axios.get(
+        "https://en.wikipedia.org/w/api.php",
+        {
+          params: {
+            action: "query",
+            list: "search",
+            srsearch: query,
+            format: "json",
+            srlimit: 5, // Try top 5 results instead of just 1
+            origin: "*",
+          },
+          timeout: 10000,
+        }
+      );
+
+      const pages = searchRes.data?.query?.search || [];
+      
+      // Try each page result
+      for (const page of pages) {
+        const imageBuffer = await fetchImageFromPageId(page.pageid);
+        if (imageBuffer) {
+          console.log("[Image] Successfully found image using strategy:", query);
+          return imageBuffer;
+        }
+      }
+    } catch (err) {
+      console.log("[Image] Strategy failed:", query, err.message);
+      continue; // Try next strategy
+    }
+  }
+  
+  return null;
+}
+
+export async function fetchEventImage(event) {
+  try {
+    console.log("[Image] Starting image fetch for event:", event.description?.slice(0, 80));
+    
+    // Try multiple search strategies
+    const imageBuffer = await searchWikipediaMultipleStrategies(event);
+    
+    if (imageBuffer) {
+      return imageBuffer;
+    }
+    
+    // Fallback: Try searching by year if available
+    if (event.year) {
+      console.log("[Image] Trying fallback: search by year", event.year);
+      try {
+        const yearSearchRes = await axios.get(
+          "https://en.wikipedia.org/w/api.php",
+          {
+            params: {
+              action: "query",
+              list: "search",
+              srsearch: `${event.year} history`,
+              format: "json",
+              srlimit: 3,
+              origin: "*",
+            },
+            timeout: 10000,
+          }
+        );
+        
+        const pages = yearSearchRes.data?.query?.search || [];
+        for (const page of pages) {
+          const imageBuffer = await fetchImageFromPageId(page.pageid);
+          if (imageBuffer) {
+            console.log("[Image] Found image via year fallback");
+            return imageBuffer;
+          }
+        }
+      } catch (err) {
+        console.log("[Image] Year fallback failed:", err.message);
+      }
+    }
+    
+    console.log("[Image] No image found after all strategies");
+    return null;
   } catch (err) {
     console.error("[Image ERROR]", err.message);
     return null; // fail safe
@@ -124,119 +233,108 @@ export async function fetchImageForText(text) {
       return null;
     }
 
-    // Extract key terms from text (remove emojis, dates, common words)
-    const cleaned = text
-      .replace(/[📅🗓️📜🌍🤯💡]/g, "") // Remove emojis
-      .replace(/\d{4}/g, "") // Remove years
-      .replace(/[^\w\s]/g, " ") // Remove punctuation
-      .split(" ")
-      .filter(word => word.length > 3) // Only words longer than 3 chars
-      .slice(0, 8) // Take first 8 meaningful words
-      .join(" ");
+    console.log("[Image] Starting image fetch for text:", text.slice(0, 80));
 
-    if (cleaned.trim().length < 5) {
-      console.log("[Image] Text too short or no meaningful keywords found");
-      return null;
-    }
-
-    console.log("[Image] Searching Wikipedia for text:", cleaned);
-
-    // Search Wikipedia
-    const searchRes = await axios.get(
-      "https://en.wikipedia.org/w/api.php",
-      {
-        params: {
-          action: "query",
-          list: "search",
-          srsearch: cleaned,
-          format: "json",
-          srlimit: 1,
-          origin: "*",
-        },
-        timeout: 10000,
-      }
-    );
-
-    const page = searchRes.data?.query?.search?.[0];
-    if (!page) {
-      console.log("[Image] No matching Wikipedia page for text.");
-      return null;
-    }
-
-    const pageId = page.pageid;
-
-    // Get page info + thumbnail (larger size for better quality)
-    const pageInfoRes = await axios.get(
-      "https://en.wikipedia.org/w/api.php",
-      {
-        params: {
-          action: "query",
-          pageids: pageId,
-          prop: "pageimages",
-          pithumbsize: 1200, // Increased from 800 for better quality
-          format: "json",
-          origin: "*",
-        },
-        timeout: 10000,
-      }
-    );
-
-    const pageInfo = pageInfoRes.data?.query?.pages?.[pageId];
-
-    if (!pageInfo?.thumbnail?.source) {
-      console.log("[Image] No thumbnail available for text.");
-      return null;
-    }
-
-    const imageUrl = pageInfo.thumbnail.source;
-    console.log("[Image] Thumbnail URL:", imageUrl);
-
-    // Download the image
-    const imgRes = await axios.get(imageUrl, {
-      responseType: "arraybuffer",
-      timeout: 10000,
-    });
-
-    const rawImageBuffer = Buffer.from(imgRes.data);
+    // Build multiple search strategies
+    const strategies = [];
     
-    // Process and optimize image using sharp
-    // Twitter optimal: 2:1 aspect ratio (1200x600px) for best timeline display
-    try {
-      const metadata = await sharp(rawImageBuffer).metadata();
-      const { width, height } = metadata;
-      
-      let targetWidth = 1200;
-      let targetHeight = 600;
-      
-      // Use center crop for consistent 2:1 ratio (best for Twitter)
-      const processedBuffer = await sharp(rawImageBuffer)
-        .resize(targetWidth, targetHeight, {
-          fit: "cover", // Crop to fill for optimal Twitter display
-          position: "center", // Center crop for best composition
-        })
-        .jpeg({ quality: 90, mozjpeg: true }) // Higher quality for viral content
-        .toBuffer();
-
-      console.log("[Image] Image processed for text with 2:1 aspect ratio. Size:", (processedBuffer.length / 1024).toFixed(2), "KB");
-      
-      // Check file size (Twitter limit is 5MB)
-      if (processedBuffer.length > 5 * 1024 * 1024) {
-        console.warn("[Image] Processed image still exceeds 5MB, using lower quality...");
-        const smallerBuffer = await sharp(rawImageBuffer)
-          .resize(1000, 500, {
-            fit: "cover",
-            position: "center",
-          })
-          .jpeg({ quality: 85, mozjpeg: true })
-          .toBuffer();
-        return smallerBuffer;
-      }
-
-      return processedBuffer;
-    } catch (sharpErr) {
-      console.error("[Image] Sharp processing error, using original:", sharpErr.message);
-      return rawImageBuffer;
+    // Strategy 1: Extract capitalized words (likely proper nouns)
+    const capitalizedWords = text
+      .replace(/[📅🗓️📜🌍🤯💡]/g, "")
+      .split(" ")
+      .filter(word => word.length > 3 && word[0] === word[0].toUpperCase() && /^[A-Z]/.test(word))
+      .slice(0, 5)
+      .join(" ");
+    if (capitalizedWords.length > 5) {
+      strategies.push(capitalizedWords);
     }
+    
+    // Strategy 2: Extract year + key terms
+    const yearMatch = text.match(/\b(1[0-9]{3}|20[0-2][0-9])\b/);
+    if (yearMatch) {
+      const year = yearMatch[1];
+      const keyTerms = text
+        .replace(/[📅🗓️📜🌍🤯💡]/g, "")
+        .replace(/\d{4}/g, "")
+        .replace(/[^\w\s]/g, " ")
+        .split(" ")
+        .filter(word => word.length > 4)
+        .slice(0, 3)
+        .join(" ");
+      if (keyTerms.length > 3) {
+        strategies.push(`${year} ${keyTerms}`);
+      }
+    }
+    
+    // Strategy 3: Remove common words, keep important terms
+    const importantWords = text
+      .replace(/[📅🗓️📜🌍🤯💡]/g, "")
+      .replace(/\d{4}/g, "")
+      .replace(/[^\w\s]/g, " ")
+      .split(" ")
+      .filter(word => {
+        const lower = word.toLowerCase();
+        return !["the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by", "this", "that", "was", "were", "is", "are"].includes(lower) &&
+               word.length > 3;
+      })
+      .slice(0, 6)
+      .join(" ");
+    if (importantWords.length > 5) {
+      strategies.push(importantWords);
+    }
+    
+    // Strategy 4: First 8 meaningful words
+    const firstWords = text
+      .replace(/[📅🗓️📜🌍🤯💡]/g, "")
+      .replace(/[^\w\s]/g, " ")
+      .split(" ")
+      .filter(word => word.length > 3)
+      .slice(0, 8)
+      .join(" ");
+    if (firstWords.length > 5) {
+      strategies.push(firstWords);
+    }
+
+    // Try each strategy
+    for (const query of strategies) {
+      if (!query || query.trim().length < 3) continue;
+      
+      try {
+        console.log("[Image] Trying text search strategy:", query);
+        
+        const searchRes = await axios.get(
+          "https://en.wikipedia.org/w/api.php",
+          {
+            params: {
+              action: "query",
+              list: "search",
+              srsearch: query,
+              format: "json",
+              srlimit: 5, // Try top 5 results
+              origin: "*",
+            },
+            timeout: 10000,
+          }
+        );
+
+        const pages = searchRes.data?.query?.search || [];
+        
+        // Try each page result
+        for (const page of pages) {
+          const imageBuffer = await fetchImageFromPageId(page.pageid);
+          if (imageBuffer) {
+            console.log("[Image] Successfully found image for text using strategy:", query);
+            return imageBuffer;
+          }
+        }
+      } catch (err) {
+        console.log("[Image] Text strategy failed:", query, err.message);
+        continue;
+      }
+    }
+    
+    console.log("[Image] No image found for text after all strategies");
+    return null;
 
   } catch (err) {
     console.error("[Image ERROR for text]", err.message);
