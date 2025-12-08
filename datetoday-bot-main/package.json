@@ -1,0 +1,18 @@
+{
+  "name": "datetoday-bot",
+  "version": "1.0.0",
+  "description": "Automated X (Twitter) history bot that posts daily On This Day tweets, evening facts, and weekly threads.",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "twitter-api-v2": "^1.15.0",
+    "openai": "^4.0.0",
+    "dotenv": "^16.4.0",
+    "axios": "^1.6.0",
+    "node-cron": "^3.0.2",
+    "sharp": "^0.33.0"
+  }
+}
