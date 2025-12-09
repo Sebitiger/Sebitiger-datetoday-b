@@ -6,6 +6,7 @@ import { postWeeklyThread } from "./weekly.js";
 import { monitorMentions } from "./engagement.js";
 import { postPoll } from "./polls.js";
 import { postWhatIfThread, postHiddenConnection, postQuickFact, postHistoryDebunk } from "./viralContent.js";
+import { monitorBigAccounts } from "./bigAccountReplies.js";
 import { info, error, warn } from "./logger.js";
 import { runHealthChecks } from "./health.js";
 import { cleanOldLogs } from "./logger.js";
@@ -150,8 +151,19 @@ cron.schedule("*/15 * * * *", async () => {
   }
 }, { timezone: "UTC" });
 
+// Every 2 hours - monitor big history accounts and reply strategically
+cron.schedule("0 */2 * * *", async () => {
+  console.log("[Cron] Monitoring big history accounts...");
+  try {
+    await monitorBigAccounts();
+  } catch (err) {
+    console.error("[Cron] Big account monitoring failed:", err.message || err);
+  }
+}, { timezone: "UTC" });
+
 info("[DateToday] Schedules registered. Bot is now waiting for cron triggers.");
 info("[DateToday] Engagement system active - monitoring mentions every 15 minutes.");
+info("[DateToday] Big account monitoring active - checking every 2 hours.");
 info("[DateToday] Health monitoring active - checks every hour.");
 info("[DateToday] Analytics tracking enabled.");
 info("[DateToday] Content moderation enabled.");

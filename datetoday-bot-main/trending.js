@@ -145,3 +145,4 @@ function isWorthConnecting(topic) {
   return !skipPatterns.some(pattern => pattern.test(topic));
 }
 
+
