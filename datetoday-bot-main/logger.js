@@ -140,12 +140,12 @@ export function logApiCall(service, endpoint, duration, success, error = null) {
 /**
  * Log tweet post
  */
-export function logTweetPost(type, tweetId, success, error = null) {
+export function logTweetPost(type, tweetId, success, errorObj = null) {
   const metadata = {
     type,
     tweetId,
     success,
-    ...(error && { error: error.message }),
+    ...(errorObj && { error: errorObj.message }),
   };
 
   if (success) {
