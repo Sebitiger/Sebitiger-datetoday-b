@@ -53,28 +53,104 @@ export async function postDailyTweet() {
     const mainTweetText = await generateMainTweet(event);
     info("[Daily] Main tweet text generated");
 
-    // 3. Try to fetch an image for the event
+    // 3. Fetch an image for the event (REQUIRED - try multiple events if needed)
     let imageBuffer = null;
-    try {
-      console.log("[Daily] Attempting to fetch image…");
-      imageBuffer = await fetchEventImage(event);
-      if (imageBuffer) {
-        console.log("[Daily] Image fetched successfully.");
-      } else {
-        console.log("[Daily] No image found, posting text-only.");
+    let imageAttempts = 0;
+    const maxImageAttempts = 5; // Increased attempts
+    let eventAttempts = 0;
+    const maxEventAttempts = 5; // Try up to 5 different events
+    
+    while (!imageBuffer && eventAttempts < maxEventAttempts) {
+      imageAttempts = 0;
+      
+      while (!imageBuffer && imageAttempts < maxImageAttempts) {
+        try {
+          console.log(`[Daily] Attempting to fetch image for event: "${event.description?.slice(0, 60)}" (attempt ${imageAttempts + 1}/${maxImageAttempts})…`);
+          imageBuffer = await fetchEventImage(event, true); // requireImage = true
+          
+          if (imageBuffer && Buffer.isBuffer(imageBuffer) && imageBuffer.length > 0) {
+            console.log(`[Daily] ✅ Image fetched successfully! Size: ${(imageBuffer.length / 1024).toFixed(2)} KB`);
+            break;
+          } else {
+            console.warn(`[Daily] ❌ No valid image buffer returned on attempt ${imageAttempts + 1}`);
+            imageBuffer = null; // Ensure it's null
+            imageAttempts++;
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        } catch (imgErr) {
+          console.error(`[Daily] Image fetch error (attempt ${imageAttempts + 1}):`, imgErr.message || imgErr);
+          imageBuffer = null;
+          imageAttempts++;
+          if (imageAttempts < maxImageAttempts) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        }
       }
-    } catch (imgErr) {
-      console.error("[Daily] Image fetch error:", imgErr.message || imgErr);
+      
+      // If still no image, try a different event
+      if (!imageBuffer && eventAttempts < maxEventAttempts - 1) {
+        console.warn(`[Daily] No image found for current event, trying a different event... (event attempt ${eventAttempts + 1}/${maxEventAttempts})`);
+        eventAttempts++;
+        
+        // Get a new event
+        let newEvent = await getRandomEvent();
+        let newEventId = createEventId(newEvent);
+        let newEventAttempts = 0;
+        
+        // Make sure it's not posted and is appropriate
+        while (newEventAttempts < 10) {
+          const isPosted = await isEventPosted(newEventId);
+          const isAppropriate = await isEventAppropriate(newEvent);
+          
+          if (!isPosted && isAppropriate) {
+            break;
+          }
+          newEvent = await getRandomEvent();
+          newEventId = createEventId(newEvent);
+          newEventAttempts++;
+        }
+        
+        event = newEvent;
+        eventId = newEventId;
+        
+        // Regenerate tweet text for new event
+        const newTweetText = await generateMainTweet(event);
+        if (newTweetText) {
+          // Update mainTweetText - we'll use this if we find an image
+          mainTweetText = newTweetText;
+          console.log(`[Daily] Switched to new event: ${event.year} - ${event.description?.slice(0, 60)}`);
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } else {
+        break;
+      }
     }
+    
+    // Final check - must have image (this is a hard requirement)
+    if (!imageBuffer || !Buffer.isBuffer(imageBuffer) || imageBuffer.length === 0) {
+      error("[Daily] CRITICAL: Could not fetch image after trying multiple events and attempts.");
+      error("[Daily] Attempted:", {
+        imageAttempts: imageAttempts,
+        eventAttempts: eventAttempts,
+        lastEvent: { year: event.year, description: event.description?.slice(0, 100) }
+      });
+      error("[Daily] Posting will FAIL - no tweet will be posted without an image.");
+      throw new Error("Failed to fetch required image for daily tweet - tried multiple events and all fallback strategies");
+    }
+    
+    // Double-check image is valid before proceeding
+    if (imageBuffer.length < 1000) {
+      error("[Daily] Image buffer too small, likely invalid");
+      throw new Error("Image buffer is too small to be valid");
+    }
+    
+    info("[Daily] Image confirmed valid", { sizeKB: (imageBuffer.length / 1024).toFixed(2) });
 
-    // 4. Post main tweet (with or without image)
+    // 4. Post main tweet (WITH IMAGE - required)
     let mainTweetId;
     try {
-      if (imageBuffer) {
-        mainTweetId = await postTweetWithImage(mainTweetText, imageBuffer, null);
-      } else {
-        mainTweetId = await postTweet(mainTweetText, null);
-      }
+      mainTweetId = await postTweetWithImage(mainTweetText, imageBuffer, null);
       
       if (!mainTweetId) {
         throw new Error("Failed to post main tweet - no tweet ID returned");

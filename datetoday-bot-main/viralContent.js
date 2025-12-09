@@ -153,18 +153,35 @@ export async function postWhatIfThread() {
       throw new Error("Failed to generate What If scenario");
     }
 
-    // Try to fetch an image based on the first tweet content
+    // Fetch an image based on the first tweet content (REQUIRED - retry until found)
     let imageBuffer = null;
-    try {
-      console.log("[Viral] Attempting to fetch image for What If thread...");
-      imageBuffer = await fetchImageForText(tweets[0]);
-      if (imageBuffer) {
-        console.log("[Viral] Image fetched successfully for What If thread.");
-      } else {
-        console.log("[Viral] No image found for What If thread, posting text-only.");
+    let imageAttempts = 0;
+    const maxImageAttempts = 3;
+    
+    while (!imageBuffer && imageAttempts < maxImageAttempts) {
+      try {
+        console.log(`[Viral] Attempting to fetch image for What If thread (attempt ${imageAttempts + 1}/${maxImageAttempts})...`);
+        imageBuffer = await fetchImageForText(tweets[0], true); // requireImage = true
+        if (imageBuffer) {
+          console.log("[Viral] Image fetched successfully for What If thread.");
+          break;
+        } else {
+          console.warn(`[Viral] No image found on attempt ${imageAttempts + 1}, retrying...`);
+          imageAttempts++;
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      } catch (imgErr) {
+        console.error(`[Viral] Image fetch error (attempt ${imageAttempts + 1}):`, imgErr.message || imgErr);
+        imageAttempts++;
+        if (imageAttempts < maxImageAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
       }
-    } catch (imgErr) {
-      console.error("[Viral] Image fetch error for What If thread:", imgErr.message || imgErr);
+    }
+    
+    if (!imageBuffer) {
+      console.error("[Viral] CRITICAL: Could not fetch image for What If thread. Posting will fail.");
+      throw new Error("Failed to fetch required image for What If thread");
     }
 
     await postThread(tweets, imageBuffer);
@@ -186,25 +203,38 @@ export async function postHiddenConnection() {
       throw new Error("Failed to generate hidden connection");
     }
 
-    // Try to fetch an image based on the tweet content
+    // Fetch an image based on the tweet content (REQUIRED - retry until found)
     let imageBuffer = null;
-    try {
-      console.log("[Viral] Attempting to fetch image for hidden connection...");
-      imageBuffer = await fetchImageForText(tweet);
-      if (imageBuffer) {
-        console.log("[Viral] Image fetched successfully for hidden connection.");
-      } else {
-        console.log("[Viral] No image found for hidden connection, posting text-only.");
+    let imageAttempts = 0;
+    const maxImageAttempts = 3;
+    
+    while (!imageBuffer && imageAttempts < maxImageAttempts) {
+      try {
+        console.log(`[Viral] Attempting to fetch image for hidden connection (attempt ${imageAttempts + 1}/${maxImageAttempts})...`);
+        imageBuffer = await fetchImageForText(tweet, true); // requireImage = true
+        if (imageBuffer) {
+          console.log("[Viral] Image fetched successfully for hidden connection.");
+          break;
+        } else {
+          console.warn(`[Viral] No image found on attempt ${imageAttempts + 1}, retrying...`);
+          imageAttempts++;
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      } catch (imgErr) {
+        console.error(`[Viral] Image fetch error (attempt ${imageAttempts + 1}):`, imgErr.message || imgErr);
+        imageAttempts++;
+        if (imageAttempts < maxImageAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
       }
-    } catch (imgErr) {
-      console.error("[Viral] Image fetch error for hidden connection:", imgErr.message || imgErr);
+    }
+    
+    if (!imageBuffer) {
+      console.error("[Viral] CRITICAL: Could not fetch image for hidden connection. Posting will fail.");
+      throw new Error("Failed to fetch required image for hidden connection");
     }
 
-    if (imageBuffer) {
-      await postTweetWithImage(tweet, imageBuffer, null);
-    } else {
-      await postTweet(tweet);
-    }
+    await postTweetWithImage(tweet, imageBuffer, null);
     console.log("[Viral] Hidden connection posted successfully");
   } catch (err) {
     console.error("[Viral] Error posting hidden connection:", err.message);
@@ -300,25 +330,38 @@ export async function postQuickFact() {
       throw new Error("Failed to generate quick fact");
     }
 
-    // Try to fetch an image based on the tweet content
+    // Fetch an image based on the tweet content (REQUIRED - retry until found)
     let imageBuffer = null;
-    try {
-      console.log("[Viral] Attempting to fetch image for quick fact...");
-      imageBuffer = await fetchImageForText(tweet);
-      if (imageBuffer) {
-        console.log("[Viral] Image fetched successfully for quick fact.");
-      } else {
-        console.log("[Viral] No image found for quick fact, posting text-only.");
+    let imageAttempts = 0;
+    const maxImageAttempts = 3;
+    
+    while (!imageBuffer && imageAttempts < maxImageAttempts) {
+      try {
+        console.log(`[Viral] Attempting to fetch image for quick fact (attempt ${imageAttempts + 1}/${maxImageAttempts})...`);
+        imageBuffer = await fetchImageForText(tweet, true); // requireImage = true
+        if (imageBuffer) {
+          console.log("[Viral] Image fetched successfully for quick fact.");
+          break;
+        } else {
+          console.warn(`[Viral] No image found on attempt ${imageAttempts + 1}, retrying...`);
+          imageAttempts++;
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      } catch (imgErr) {
+        console.error(`[Viral] Image fetch error (attempt ${imageAttempts + 1}):`, imgErr.message || imgErr);
+        imageAttempts++;
+        if (imageAttempts < maxImageAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
       }
-    } catch (imgErr) {
-      console.error("[Viral] Image fetch error for quick fact:", imgErr.message || imgErr);
+    }
+    
+    if (!imageBuffer) {
+      console.error("[Viral] CRITICAL: Could not fetch image for quick fact. Posting will fail.");
+      throw new Error("Failed to fetch required image for quick fact");
     }
 
-    if (imageBuffer) {
-      await postTweetWithImage(tweet, imageBuffer, null);
-    } else {
-      await postTweet(tweet);
-    }
+    await postTweetWithImage(tweet, imageBuffer, null);
     console.log("[Viral] Quick fact posted successfully");
   } catch (err) {
     console.error("[Viral] Error posting quick fact:", err.message);
@@ -411,25 +454,38 @@ export async function postHistoryDebunk() {
       throw new Error("Failed to generate history debunk");
     }
 
-    // Try to fetch an image based on the tweet content
+    // Fetch an image based on the tweet content (REQUIRED - retry until found)
     let imageBuffer = null;
-    try {
-      console.log("[Viral] Attempting to fetch image for history debunk...");
-      imageBuffer = await fetchImageForText(tweet);
-      if (imageBuffer) {
-        console.log("[Viral] Image fetched successfully for history debunk.");
-      } else {
-        console.log("[Viral] No image found for history debunk, posting text-only.");
+    let imageAttempts = 0;
+    const maxImageAttempts = 3;
+    
+    while (!imageBuffer && imageAttempts < maxImageAttempts) {
+      try {
+        console.log(`[Viral] Attempting to fetch image for history debunk (attempt ${imageAttempts + 1}/${maxImageAttempts})...`);
+        imageBuffer = await fetchImageForText(tweet, true); // requireImage = true
+        if (imageBuffer) {
+          console.log("[Viral] Image fetched successfully for history debunk.");
+          break;
+        } else {
+          console.warn(`[Viral] No image found on attempt ${imageAttempts + 1}, retrying...`);
+          imageAttempts++;
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      } catch (imgErr) {
+        console.error(`[Viral] Image fetch error (attempt ${imageAttempts + 1}):`, imgErr.message || imgErr);
+        imageAttempts++;
+        if (imageAttempts < maxImageAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
       }
-    } catch (imgErr) {
-      console.error("[Viral] Image fetch error for history debunk:", imgErr.message || imgErr);
+    }
+    
+    if (!imageBuffer) {
+      console.error("[Viral] CRITICAL: Could not fetch image for history debunk. Posting will fail.");
+      throw new Error("Failed to fetch required image for history debunk");
     }
 
-    if (imageBuffer) {
-      await postTweetWithImage(tweet, imageBuffer, null);
-    } else {
-      await postTweet(tweet);
-    }
+    await postTweetWithImage(tweet, imageBuffer, null);
     console.log("[Viral] History debunk posted successfully");
   } catch (err) {
     console.error("[Viral] Error posting history debunk:", err.message);

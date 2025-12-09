@@ -17,18 +17,35 @@ export async function postWeeklyThread() {
       throw new Error("No tweets generated for weekly thread");
     }
 
-    // Try to fetch an image for the event
+    // Fetch an image for the event (REQUIRED - retry until found)
     let imageBuffer = null;
-    try {
-      console.log("[Weekly] Attempting to fetch image for weekly thread...");
-      imageBuffer = await fetchEventImage(event);
-      if (imageBuffer) {
-        console.log("[Weekly] Image fetched successfully for weekly thread.");
-      } else {
-        console.log("[Weekly] No image found for weekly thread, posting text-only.");
+    let imageAttempts = 0;
+    const maxImageAttempts = 3;
+    
+    while (!imageBuffer && imageAttempts < maxImageAttempts) {
+      try {
+        console.log(`[Weekly] Attempting to fetch image (attempt ${imageAttempts + 1}/${maxImageAttempts})...`);
+        imageBuffer = await fetchEventImage(event, true); // requireImage = true
+        if (imageBuffer) {
+          console.log("[Weekly] Image fetched successfully for weekly thread.");
+          break;
+        } else {
+          console.warn(`[Weekly] No image found on attempt ${imageAttempts + 1}, retrying...`);
+          imageAttempts++;
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      } catch (imgErr) {
+        console.error(`[Weekly] Image fetch error (attempt ${imageAttempts + 1}):`, imgErr.message || imgErr);
+        imageAttempts++;
+        if (imageAttempts < maxImageAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
       }
-    } catch (imgErr) {
-      console.error("[Weekly] Image fetch error for weekly thread:", imgErr.message || imgErr);
+    }
+    
+    if (!imageBuffer) {
+      console.error("[Weekly] CRITICAL: Could not fetch image after multiple attempts. Posting will fail.");
+      throw new Error("Failed to fetch required image for weekly thread");
     }
 
     await postThread(tweets, imageBuffer);
