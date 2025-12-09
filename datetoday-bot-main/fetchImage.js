@@ -28,7 +28,8 @@ async function fetchImageFromPageId(pageId) {
           origin: "*",
         },
         headers: {
-          'User-Agent': 'DateTodayBot/1.0 (https://github.com/yourusername/datetoday-bot; contact@example.com)'
+          'User-Agent': 'DateTodayBot/1.0 (https://github.com/yourusername/datetoday-bot; contact@example.com)',
+          'Accept': 'application/json'
         },
         timeout: 15000, // Increased timeout
       }
@@ -48,6 +49,9 @@ async function fetchImageFromPageId(pageId) {
       return await axios.get(imageUrl, {
         responseType: "arraybuffer",
         timeout: 15000, // Increased timeout
+        headers: {
+          'User-Agent': 'DateTodayBot/1.0'
+        }
       });
     }, 3, 1000); // More retries
 
@@ -629,15 +633,26 @@ async function fetchGenericHistoricalImage(year = null) {
       }
     }
     
-    // Try alternative sources: Unsplash, Pexels, Wikimedia Commons
+    // Try alternative sources: Pexels FIRST (most reliable with API key), then Unsplash, Wikimedia Commons
     const searchTerms = year 
-      ? [`${year} history`, `historical ${year}`, `${year} event`]
-      : ["history", "historical event", "ancient history"];
+      ? [`${year} history`, `historical ${year}`, `${year} event`, `history ${year}`]
+      : ["history", "historical event", "ancient history", "world history"];
     
     for (const term of searchTerms) {
       console.log(`[Image] Trying alternative sources for: "${term}"`);
       
+      // Try Pexels FIRST (most reliable with API key)
+      if (process.env.PEXELS_API_KEY) {
+        console.log(`[Image] Trying Pexels for: "${term}"`);
+        const pexelsImage = await fetchFromPexels(term);
+        if (pexelsImage) {
+          console.log(`[Image] ✅ Found best matching image from Pexels: "${term}"`);
+          return pexelsImage;
+        }
+      }
+      
       // Try Unsplash (selects best match from results)
+      console.log(`[Image] Trying Unsplash for: "${term}"`);
       const unsplashImage = await fetchFromUnsplash(term);
       if (unsplashImage) {
         console.log(`[Image] ✅ Found best matching image from Unsplash: "${term}"`);
@@ -645,50 +660,77 @@ async function fetchGenericHistoricalImage(year = null) {
       }
       
       // Try Wikimedia Commons
+      console.log(`[Image] Trying Wikimedia Commons for: "${term}"`);
       const commonsImage = await fetchFromWikimediaCommons(term);
       if (commonsImage) {
         console.log(`[Image] ✅ Found image from Wikimedia Commons: "${term}"`);
         return commonsImage;
       }
-      
-      // Try Pexels (if API key available, selects best match from results)
-      if (process.env.PEXELS_API_KEY) {
-        const pexelsImage = await fetchFromPexels(term);
-        if (pexelsImage) {
-          console.log(`[Image] ✅ Found best matching image from Pexels: "${term}"`);
-          return pexelsImage;
+    }
+    
+    // ABSOLUTE LAST RESORT: Direct image URLs that are guaranteed to work
+    // These are public domain historical images from Wikimedia Commons
+    console.log("[Image] Trying absolute last resort: Direct historical image URLs");
+    const guaranteedImageUrls = [
+      "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4f/World_War_II_Montage_2014.jpg/1200px-World_War_II_Montage_2014.jpg", // WWII - always available
+      "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6f/East_side_of_the_Gettysburg_Battlefield.jpg/1200px-East_side_of_the_Gettysburg_Battlefield.jpg", // Civil War
+      "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8a/Declaration_of_Independence_%281819%29_by_John_Trumbull.jpg/1200px-Declaration_of_Independence_%281819%29_by_John_Trumbull.jpg", // Historical document
+      "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0b/Ancient_Rome_Colosseum.jpg/1200px-Ancient_Rome_Colosseum.jpg", // Ancient Rome
+      "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Parthenon_from_west.jpg/1200px-Parthenon_from_west.jpg", // Ancient Greece
+    ];
+    
+    for (const imageUrl of guaranteedImageUrls) {
+      try {
+        console.log(`[Image] Trying guaranteed image URL...`);
+        const imgRes = await axios.get(imageUrl, {
+          responseType: "arraybuffer",
+          timeout: 20000,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; DateTodayBot/1.0)'
+          }
+        });
+        
+        if (imgRes && imgRes.data) {
+          const rawImageBuffer = Buffer.from(imgRes.data);
+          if (rawImageBuffer.length > 1000) { // At least 1KB
+            const processedBuffer = await processImageBuffer(rawImageBuffer);
+            if (processedBuffer && processedBuffer.length > 0) {
+              console.log("[Image] ✅ Found image from guaranteed URL (last resort)");
+              return processedBuffer;
+            }
+          }
         }
+      } catch (err) {
+        console.log(`[Image] Guaranteed URL failed: ${err.message}`);
+        continue;
       }
     }
     
-    // ABSOLUTE LAST RESORT: Use a well-known page that definitely has an image
-    // "World War II" page ID is 18637 and definitely has images
-    console.log("[Image] Trying absolute last resort: World War II page (guaranteed to have image)");
-    try {
-      const ww2PageId = "18637"; // World War II page ID
-      const imageBuffer = await fetchImageFromPageId(ww2PageId);
-      if (imageBuffer) {
-        console.log("[Image] ✅ Found image from World War II page (last resort)");
-        return imageBuffer;
-      }
-    } catch (err) {
-      console.error("[Image] Even World War II page failed:", err.message);
-    }
-    
-    console.error("[Image] CRITICAL: All fallbacks including alternative sources failed!");
+    console.error("[Image] CRITICAL: All fallbacks including guaranteed URLs failed!");
     return null;
   } catch (err) {
     console.error("[Image] Generic fallback error:", err.message);
-    // Try one more time with World War II
+    // Try one more time with guaranteed direct image URLs
     try {
-      const ww2PageId = "18637";
-      const imageBuffer = await fetchImageFromPageId(ww2PageId);
-      if (imageBuffer) {
-        console.log("[Image] ✅ Emergency fallback to World War II succeeded");
-        return imageBuffer;
+      const emergencyUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4f/World_War_II_Montage_2014.jpg/1200px-World_War_II_Montage_2014.jpg";
+      const imgRes = await axios.get(emergencyUrl, {
+        responseType: "arraybuffer",
+        timeout: 15000,
+        headers: {
+          'User-Agent': 'DateTodayBot/1.0'
+        }
+      });
+      
+      if (imgRes && imgRes.data) {
+        const rawImageBuffer = Buffer.from(imgRes.data);
+        const processedBuffer = await processImageBuffer(rawImageBuffer);
+        if (processedBuffer) {
+          console.log("[Image] ✅ Emergency fallback to direct image URL succeeded");
+          return processedBuffer;
+        }
       }
     } catch (e) {
-      console.error("[Image] Emergency fallback also failed");
+      console.error("[Image] Emergency fallback also failed:", e.message);
     }
     return null;
   }
@@ -698,18 +740,39 @@ export async function fetchEventImage(event, requireImage = true) {
   try {
     console.log("[Image] Starting image fetch for event:", event.description?.slice(0, 80));
     
-    // Strategy 1: Try multiple Wikipedia search strategies
+    // Strategy 1: Try Pexels FIRST (most reliable with API key)
+    if (process.env.PEXELS_API_KEY) {
+      const eventSearchTerms = [
+        event.description?.slice(0, 30),
+        event.year ? `${event.year} history` : null,
+        event.description?.split(" ").slice(0, 3).join(" "),
+        event.year ? `history ${event.year}` : null
+      ].filter(Boolean);
+      
+      for (const term of eventSearchTerms) {
+        if (!term || term.length < 3) continue;
+        console.log(`[Image] Trying Pexels first for: "${term}"`);
+        const pexelsImage = await fetchFromPexels(term, event.description);
+        if (pexelsImage) {
+          console.log(`[Image] ✅ Found best matching image from Pexels for event`);
+          return pexelsImage;
+        }
+      }
+    }
+    
+    // Strategy 2: Try multiple Wikipedia search strategies
     let imageBuffer = await searchWikipediaMultipleStrategies(event);
     
     if (imageBuffer) {
       return imageBuffer;
     }
     
-    // Strategy 1.5: Try alternative sources (Unsplash, Pexels, Wikimedia Commons)
+    // Strategy 3: Try alternative sources (Unsplash, Wikimedia Commons)
     const eventSearchTerms = [
       event.description?.slice(0, 30),
       event.year ? `${event.year} history` : null,
-      event.description?.split(" ").slice(0, 3).join(" ")
+      event.description?.split(" ").slice(0, 3).join(" "),
+      event.year ? `history ${event.year}` : null
     ].filter(Boolean);
     
     for (const term of eventSearchTerms) {
@@ -727,15 +790,6 @@ export async function fetchEventImage(event, requireImage = true) {
       if (imageBuffer) {
         console.log(`[Image] ✅ Found image from Wikimedia Commons for event`);
         return imageBuffer;
-      }
-      
-      // Try Pexels if API key available (with event description for better matching)
-      if (process.env.PEXELS_API_KEY) {
-        imageBuffer = await fetchFromPexels(term, event.description);
-        if (imageBuffer) {
-          console.log(`[Image] ✅ Found best matching image from Pexels for event`);
-          return imageBuffer;
-        }
       }
     }
     
@@ -816,6 +870,42 @@ export async function fetchEventImage(event, requireImage = true) {
       imageBuffer = await fetchGenericHistoricalImage(event.year);
       if (imageBuffer) {
         return imageBuffer;
+      }
+    }
+    
+    // Strategy 5: Guaranteed direct image URLs (absolute last resort)
+    if (requireImage) {
+      console.log("[Image] Trying guaranteed direct image URLs...");
+      const guaranteedImageUrls = [
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4f/World_War_II_Montage_2014.jpg/1200px-World_War_II_Montage_2014.jpg",
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6f/East_side_of_the_Gettysburg_Battlefield.jpg/1200px-East_side_of_the_Gettysburg_Battlefield.jpg",
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8a/Declaration_of_Independence_%281819%29_by_John_Trumbull.jpg/1200px-Declaration_of_Independence_%281819%29_by_John_Trumbull.jpg",
+      ];
+      
+      for (const imageUrl of guaranteedImageUrls) {
+        try {
+          const imgRes = await axios.get(imageUrl, {
+            responseType: "arraybuffer",
+            timeout: 20000,
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (compatible; DateTodayBot/1.0)'
+            }
+          });
+          
+          if (imgRes && imgRes.data) {
+            const rawImageBuffer = Buffer.from(imgRes.data);
+            if (rawImageBuffer.length > 1000) {
+              const processedBuffer = await processImageBuffer(rawImageBuffer);
+              if (processedBuffer && processedBuffer.length > 0) {
+                console.log("[Image] ✅ Found image from guaranteed URL");
+                return processedBuffer;
+              }
+            }
+          }
+        } catch (err) {
+          console.log(`[Image] Guaranteed URL failed: ${err.message}`);
+          continue;
+        }
       }
     }
     
