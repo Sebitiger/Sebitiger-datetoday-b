@@ -61,6 +61,66 @@ cron.schedule("0 9 * * *", async () => {
   }
 }, { timezone: "UTC" });
 
+// 10:00 UTC - Quick Fact (hourly posting)
+cron.schedule("0 10 * * *", async () => {
+  console.log("[Cron] Running Quick Fact job (10:00 UTC)");
+  try {
+    await postQuickFact();
+  } catch (err) {
+    console.error("[Cron] Quick Fact job failed:", err.message || err);
+  }
+}, { timezone: "UTC" });
+
+// 11:00 UTC - Quick Fact (hourly posting)
+cron.schedule("0 11 * * *", async () => {
+  console.log("[Cron] Running Quick Fact job (11:00 UTC)");
+  try {
+    await postQuickFact();
+  } catch (err) {
+    console.error("[Cron] Quick Fact job failed:", err.message || err);
+  }
+}, { timezone: "UTC" });
+
+// 13:00 UTC - Quick Fact (hourly posting)
+cron.schedule("0 13 * * *", async () => {
+  console.log("[Cron] Running Quick Fact job (13:00 UTC)");
+  try {
+    await postQuickFact();
+  } catch (err) {
+    console.error("[Cron] Quick Fact job failed:", err.message || err);
+  }
+}, { timezone: "UTC" });
+
+// 15:00 UTC - Quick Fact (or special content on certain days)
+cron.schedule("0 15 * * *", async () => {
+  console.log("[Cron] Running Quick Fact job (15:00 UTC)");
+  try {
+    await postQuickFact();
+  } catch (err) {
+    console.error("[Cron] Quick Fact job failed:", err.message || err);
+  }
+}, { timezone: "UTC" });
+
+// 16:00 UTC - Quick Fact (hourly posting)
+cron.schedule("0 16 * * *", async () => {
+  console.log("[Cron] Running Quick Fact job (16:00 UTC)");
+  try {
+    await postQuickFact();
+  } catch (err) {
+    console.error("[Cron] Quick Fact job failed:", err.message || err);
+  }
+}, { timezone: "UTC" });
+
+// 17:00 UTC - Quick Fact (hourly posting)
+cron.schedule("0 17 * * *", async () => {
+  console.log("[Cron] Running Quick Fact job (17:00 UTC)");
+  try {
+    await postQuickFact();
+  } catch (err) {
+    console.error("[Cron] Quick Fact job failed:", err.message || err);
+  }
+}, { timezone: "UTC" });
+
 // 18:00 UTC - evening extra fact
 cron.schedule("0 18 * * *", async () => {
   console.log("[Cron] Running evening fact job (18:00 UTC)");
@@ -71,7 +131,27 @@ cron.schedule("0 18 * * *", async () => {
   }
 }, { timezone: "UTC" });
 
-// Sunday 16:00 UTC - weekly deep dive thread
+// 19:00 UTC - Quick Fact (hourly posting)
+cron.schedule("0 19 * * *", async () => {
+  console.log("[Cron] Running Quick Fact job (19:00 UTC)");
+  try {
+    await postQuickFact();
+  } catch (err) {
+    console.error("[Cron] Quick Fact job failed:", err.message || err);
+  }
+}, { timezone: "UTC" });
+
+// 20:00 UTC - Quick Fact (hourly posting)
+cron.schedule("0 20 * * *", async () => {
+  console.log("[Cron] Running Quick Fact job (20:00 UTC)");
+  try {
+    await postQuickFact();
+  } catch (err) {
+    console.error("[Cron] Quick Fact job failed:", err.message || err);
+  }
+}, { timezone: "UTC" });
+
+// Sunday 16:00 UTC - weekly deep dive thread (replaces 16:00 Quick Fact on Sunday)
 cron.schedule("0 16 * * 0", async () => {
   console.log("[Cron] Running weekly thread job (Sunday 16:00 UTC)");
   try {
@@ -81,7 +161,7 @@ cron.schedule("0 16 * * 0", async () => {
   }
 }, { timezone: "UTC" });
 
-// Tuesday & Thursday 14:00 UTC - interactive polls
+// Tuesday & Thursday 14:00 UTC - interactive polls (replaces 15:00 Quick Fact on those days)
 cron.schedule("0 14 * * 2,4", async () => {
   console.log("[Cron] Running poll job (Tuesday/Thursday 14:00 UTC)");
   try {
@@ -101,7 +181,7 @@ cron.schedule("0 12 * * 3", async () => {
   }
 }, { timezone: "UTC" });
 
-// Friday 15:00 UTC - Hidden Connections (viral content)
+// Friday 15:00 UTC - Hidden Connections (replaces 15:00 Quick Fact on Friday)
 cron.schedule("0 15 * * 5", async () => {
   console.log("[Cron] Running Hidden Connection job (Friday 15:00 UTC)");
   try {
@@ -121,7 +201,7 @@ cron.schedule("0 12 * * 1", async () => {
   }
 }, { timezone: "UTC" });
 
-// Monday 15:00 UTC - History Debunk (correct misconceptions)
+// Monday 15:00 UTC - History Debunk (replaces 15:00 Quick Fact on Monday)
 cron.schedule("0 15 * * 1", async () => {
   console.log("[Cron] Running History Debunk job (Monday 15:00 UTC)");
   try {
@@ -131,9 +211,49 @@ cron.schedule("0 15 * * 1", async () => {
   }
 }, { timezone: "UTC" });
 
+// Tuesday 12:00 UTC - Quick Fact (mid-week boost)
+cron.schedule("0 12 * * 2", async () => {
+  console.log("[Cron] Running Quick Fact job (Tuesday 12:00 UTC)");
+  try {
+    await postQuickFact();
+  } catch (err) {
+    console.error("[Cron] Quick Fact job failed:", err.message || err);
+  }
+}, { timezone: "UTC" });
+
+// Thursday 12:00 UTC - Quick Fact (mid-week boost)
+cron.schedule("0 12 * * 4", async () => {
+  console.log("[Cron] Running Quick Fact job (Thursday 12:00 UTC)");
+  try {
+    await postQuickFact();
+  } catch (err) {
+    console.error("[Cron] Quick Fact job failed:", err.message || err);
+  }
+}, { timezone: "UTC" });
+
+// Friday 12:00 UTC - Quick Fact (end of week)
+cron.schedule("0 12 * * 5", async () => {
+  console.log("[Cron] Running Quick Fact job (Friday 12:00 UTC)");
+  try {
+    await postQuickFact();
+  } catch (err) {
+    console.error("[Cron] Quick Fact job failed:", err.message || err);
+  }
+}, { timezone: "UTC" });
+
 // Saturday 12:00 UTC - Quick Fact (weekend engagement)
 cron.schedule("0 12 * * 6", async () => {
   console.log("[Cron] Running Quick Fact job (Saturday 12:00 UTC)");
+  try {
+    await postQuickFact();
+  } catch (err) {
+    console.error("[Cron] Quick Fact job failed:", err.message || err);
+  }
+}, { timezone: "UTC" });
+
+// Sunday 12:00 UTC - Quick Fact (weekend engagement)
+cron.schedule("0 12 * * 0", async () => {
+  console.log("[Cron] Running Quick Fact job (Sunday 12:00 UTC)");
   try {
     await postQuickFact();
   } catch (err) {

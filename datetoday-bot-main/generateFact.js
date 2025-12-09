@@ -5,17 +5,32 @@ const OPENAI_TIMEOUT = 30000; // 30 seconds
 
   export async function generateEveningFact() {
     const userPrompt = `
-Create one short, surprising historical fact that makes the reader feel smarter.
+Create one short, surprising fact about a MAJOR historical event or significant moment that makes the reader feel smarter and think "oh I forgot about that!"
+
+Focus on:
+- BIG MOMENTS in history - significant events, major turning points, important historical figures
+- Events that MATTERED - things that shaped history, changed the world, had real impact
+- Educational value - teach people about important history
+- The "recall" factor - make people remember significant moments they may have forgotten
+
 Requirements:
+- Focus on MAJOR historical events - big moments, significant turning points, important figures
 - max 250 characters (to ensure complete sentences)
 - no emojis, no hashtags
 - must be factually correct (widely documented in history)
-- one or two short sentences
+- one or two short sentences about a SIGNIFICANT historical moment
 - do NOT reference "today" or a specific date
+- Emphasize the IMPORTANCE and SIGNIFICANCE of the event
+- Make it educational - teach about big moments in history
 - CRITICAL: Complete your sentence - never cut off mid-sentence
 - Always end with proper punctuation
 - NEVER use em dashes (—) - use commas, periods, or regular hyphens instead
 - Write naturally like a human, not like AI-generated content
+
+Examples of good major event facts:
+- "The Battle of [X] changed the course of [war/conflict]..."
+- "When [major figure] made the decision to [significant action], it led to..."
+- "One of history's most significant moments was when..."
 `;
 
     try {

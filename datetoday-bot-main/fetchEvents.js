@@ -239,10 +239,14 @@ function selectMajorEvent(events) {
   const topCount = Math.max(1, Math.ceil(scoredEvents.length * 0.3));
   const topEvents = scoredEvents.slice(0, topCount);
 
-  // If we have events with score >= 40, prefer those (increased threshold for more specific events)
-  const majorEvents = scoredEvents.filter(item => item.score >= 40);
-  const candidates = majorEvents.length > 0 ? majorEvents : 
-                     scoredEvents.filter(item => item.score >= 20); // Fallback to score >= 20
+  // STRICT: Only select truly major events (score >= 50 for truly significant moments)
+  const majorEvents = scoredEvents.filter(item => item.score >= 50);
+  const veryMajorEvents = scoredEvents.filter(item => item.score >= 60);
+  
+  // Prefer very major events (60+), then major (50+), only fallback to 40+ if nothing else
+  const candidates = veryMajorEvents.length > 0 ? veryMajorEvents :
+                     majorEvents.length > 0 ? majorEvents :
+                     scoredEvents.filter(item => item.score >= 40); // Only fallback to 40+ if no major events
 
   // Weighted random selection from candidates
   // Higher scores get higher weight, but still random
@@ -319,9 +323,16 @@ export async function getEventForDate() {
     const day = date.getDate();
 
     const usableEvents = await fetchEventsForDate(month, day);
-    const randomEvent = selectRandomEvent(usableEvents);
+    // Use major event selection for weekly threads too
+    const majorEvent = selectMajorEvent(usableEvents);
+    const selectedEvent = majorEvent || selectRandomEvent(usableEvents);
+    
+    if (majorEvent) {
+      const score = scoreEventMajority(majorEvent);
+      console.log(`[Events] Selected major event for weekly thread (score: ${score})`);
+    }
 
-    return formatEvent(randomEvent, date, true);
+    return formatEvent(selectedEvent, date, true);
 
   } catch (err) {
     console.error("[Events ERROR]", err.message);
