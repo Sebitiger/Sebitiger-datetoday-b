@@ -29,20 +29,32 @@ export async function checkRateLimits() {
  * Handle rate limit error
  */
 export function handleRateLimitError(error, endpoint) {
-  if (error.code === 429 || error.status === 429) {
-    const resetTime = error.rateLimit?.reset || Date.now() + 900000; // Default 15 min
+  if (error.code === 429 || error.status === 429 || error.message?.includes("429")) {
+    // Try to extract reset time from error headers or use default
+    let resetTime = null;
+    
+    // Check for rate limit reset header
+    if (error.rateLimit?.reset) {
+      resetTime = error.rateLimit.reset * 1000; // Convert to milliseconds
+    } else if (error.headers?.['x-rate-limit-reset']) {
+      resetTime = parseInt(error.headers['x-rate-limit-reset']) * 1000;
+    } else {
+      // Default: wait 15 minutes (900 seconds)
+      resetTime = Date.now() + 900000;
+    }
+    
     rateLimitStatus[endpoint] = {
       remaining: 0,
-      resetAt: new Date(resetTime * 1000),
+      resetAt: new Date(resetTime),
     };
     
-    const waitTime = resetTime * 1000 - Date.now();
-    console.warn(`[RateLimiter] Rate limit hit for ${endpoint}. Waiting ${Math.round(waitTime / 1000)}s`);
+    const waitTime = Math.max(0, resetTime - Date.now());
+    console.warn(`[RateLimiter] Rate limit hit for ${endpoint}. Waiting ${Math.round(waitTime / 1000)}s until ${new Date(resetTime).toISOString()}`);
     
     return {
       rateLimited: true,
       waitTime,
-      resetAt: new Date(resetTime * 1000),
+      resetAt: new Date(resetTime),
     };
   }
   

@@ -2,6 +2,7 @@
 
 import { TwitterApi } from "twitter-api-v2";
 import dotenv from "dotenv";
+import { handleRateLimitError, waitIfRateLimited } from "./rateLimiter.js";
 
 dotenv.config();
 
@@ -81,29 +82,65 @@ export function validateTweetText(text) {
  * If replyToId is provided, posts as a reply.
  */
 export async function postTweet(text, replyToId = null) {
-  try {
-    const validatedText = validateTweetText(text);
-    
-    // Log tweet content for debugging (first 100 chars)
-    console.log("[Twitter] Posting tweet:", validatedText.slice(0, 100) + (validatedText.length > 100 ? "..." : ""));
+  const maxRetries = 3;
+  let lastError = null;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      // Check if rate limited before attempting
+      await waitIfRateLimited("tweets");
+      
+      const validatedText = validateTweetText(text);
+      
+      // Log tweet content for debugging (first 100 chars)
+      console.log("[Twitter] Posting tweet:", validatedText.slice(0, 100) + (validatedText.length > 100 ? "..." : ""));
 
-    const payload = { text: validatedText };
+      const payload = { text: validatedText };
 
-    if (replyToId) {
-      if (typeof replyToId !== "string" && typeof replyToId !== "number") {
-        throw new Error("replyToId must be a string or number");
+      if (replyToId) {
+        if (typeof replyToId !== "string" && typeof replyToId !== "number") {
+          throw new Error("replyToId must be a string or number");
+        }
+        payload.reply = { in_reply_to_tweet_id: String(replyToId) };
       }
-      payload.reply = { in_reply_to_tweet_id: String(replyToId) };
-    }
 
-    const res = await client.v2.tweet(payload);
-    const tweetId = res.data.id;
-    console.log("[Twitter] Tweet posted. ID:", tweetId);
-    return tweetId;
-  } catch (err) {
-    console.error("[Twitter] Error posting tweet:", err);
-    throw err;
+      const res = await client.v2.tweet(payload);
+      const tweetId = res.data.id;
+      console.log("[Twitter] Tweet posted. ID:", tweetId);
+      return tweetId;
+    } catch (err) {
+      lastError = err;
+      
+      // Check if it's a rate limit error (429)
+      if (err.code === 429 || err.status === 429 || err.message?.includes("429")) {
+        console.warn("[Twitter] Rate limit hit (429). Handling...");
+        const rateLimitInfo = handleRateLimitError(err, "tweets");
+        
+        if (rateLimitInfo.rateLimited) {
+          // Wait for rate limit to reset
+          const waitTime = Math.min(rateLimitInfo.waitTime || 900000, 900000); // Max 15 minutes
+          console.log(`[Twitter] Waiting ${Math.round(waitTime / 1000)}s for rate limit reset...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          
+          // Retry after waiting
+          continue;
+        }
+      }
+      
+      // For other errors, throw immediately
+      if (attempt === maxRetries - 1) {
+        console.error("[Twitter] Error posting tweet after retries:", err);
+        throw err;
+      }
+      
+      // Exponential backoff for other errors
+      const backoffDelay = Math.min(1000 * Math.pow(2, attempt), 10000);
+      console.log(`[Twitter] Retrying in ${backoffDelay}ms... (attempt ${attempt + 1}/${maxRetries})`);
+      await new Promise(resolve => setTimeout(resolve, backoffDelay));
+    }
   }
+  
+  throw lastError || new Error("Failed to post tweet after retries");
 }
 
 /**
@@ -111,45 +148,81 @@ export async function postTweet(text, replyToId = null) {
  * If replyToId is provided, posts as a reply.
  */
 export async function postTweetWithImage(text, imageBuffer, replyToId = null) {
-  try {
-    const validatedText = validateTweetText(text);
-    
-    if (!imageBuffer || !Buffer.isBuffer(imageBuffer)) {
-      throw new Error("imageBuffer must be a valid Buffer");
-    }
-
-    // Log tweet content for debugging
-    console.log("[Twitter] Posting tweet with image:", validatedText.slice(0, 100) + (validatedText.length > 100 ? "..." : ""));
-
-    let mediaId = null;
-
-    if (imageBuffer) {
-      console.log("[Twitter] Uploading media…");
-      mediaId = await client.v1.uploadMedia(imageBuffer, { type: "image" });
-      console.log("[Twitter] Media uploaded. ID:", mediaId);
-    }
-
-    const payload = { text: validatedText };
-
-    if (mediaId) {
-      payload.media = { media_ids: [mediaId] };
-    }
-
-    if (replyToId) {
-      if (typeof replyToId !== "string" && typeof replyToId !== "number") {
-        throw new Error("replyToId must be a string or number");
+  const maxRetries = 3;
+  let lastError = null;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      // Check if rate limited before attempting
+      await waitIfRateLimited("tweets");
+      
+      const validatedText = validateTweetText(text);
+      
+      if (!imageBuffer || !Buffer.isBuffer(imageBuffer)) {
+        throw new Error("imageBuffer must be a valid Buffer");
       }
-      payload.reply = { in_reply_to_tweet_id: String(replyToId) };
-    }
 
-    const res = await client.v2.tweet(payload);
-    const tweetId = res.data.id;
-    console.log("[Twitter] Tweet with image posted. ID:", tweetId);
-    return tweetId;
-  } catch (err) {
-    console.error("[Twitter] Error posting tweet with image:", err);
-    throw err;
+      // Log tweet content for debugging
+      console.log("[Twitter] Posting tweet with image:", validatedText.slice(0, 100) + (validatedText.length > 100 ? "..." : ""));
+
+      let mediaId = null;
+
+      if (imageBuffer) {
+        console.log("[Twitter] Uploading media…");
+        mediaId = await client.v1.uploadMedia(imageBuffer, { type: "image" });
+        console.log("[Twitter] Media uploaded. ID:", mediaId);
+      }
+
+      const payload = { text: validatedText };
+
+      if (mediaId) {
+        payload.media = { media_ids: [mediaId] };
+      }
+
+      if (replyToId) {
+        if (typeof replyToId !== "string" && typeof replyToId !== "number") {
+          throw new Error("replyToId must be a string or number");
+        }
+        payload.reply = { in_reply_to_tweet_id: String(replyToId) };
+      }
+
+      const res = await client.v2.tweet(payload);
+      const tweetId = res.data.id;
+      console.log("[Twitter] Tweet with image posted. ID:", tweetId);
+      return tweetId;
+    } catch (err) {
+      lastError = err;
+      
+      // Check if it's a rate limit error (429)
+      if (err.code === 429 || err.status === 429 || err.message?.includes("429")) {
+        console.warn("[Twitter] Rate limit hit (429). Handling...");
+        const rateLimitInfo = handleRateLimitError(err, "tweets");
+        
+        if (rateLimitInfo.rateLimited) {
+          // Wait for rate limit to reset
+          const waitTime = Math.min(rateLimitInfo.waitTime || 900000, 900000); // Max 15 minutes
+          console.log(`[Twitter] Waiting ${Math.round(waitTime / 1000)}s for rate limit reset...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          
+          // Retry after waiting
+          continue;
+        }
+      }
+      
+      // For other errors, throw immediately
+      if (attempt === maxRetries - 1) {
+        console.error("[Twitter] Error posting tweet with image after retries:", err);
+        throw err;
+      }
+      
+      // Exponential backoff for other errors
+      const backoffDelay = Math.min(1000 * Math.pow(2, attempt), 10000);
+      console.log(`[Twitter] Retrying in ${backoffDelay}ms... (attempt ${attempt + 1}/${maxRetries})`);
+      await new Promise(resolve => setTimeout(resolve, backoffDelay));
+    }
   }
+  
+  throw lastError || new Error("Failed to post tweet with image after retries");
 }
 
 /**
