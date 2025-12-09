@@ -27,6 +27,9 @@ async function fetchImageFromPageId(pageId) {
           format: "json",
           origin: "*",
         },
+        headers: {
+          'User-Agent': 'DateTodayBot/1.0 (https://github.com/yourusername/datetoday-bot; contact@example.com)'
+        },
         timeout: 15000, // Increased timeout
       }
     );
@@ -112,6 +115,266 @@ async function processImageBuffer(rawImageBuffer) {
 }
 
 /**
+ * Score image relevance based on search term and image metadata
+ */
+function scoreImageRelevance(image, searchTerm, eventDescription = null) {
+  let score = 0;
+  const searchLower = searchTerm.toLowerCase();
+  const descLower = eventDescription?.toLowerCase() || "";
+  
+  // Check image description/title relevance
+  const imageDesc = (image.description || image.alt_description || image.title || "").toLowerCase();
+  if (imageDesc.includes(searchLower)) {
+    score += 30;
+  }
+  
+  // Check for key historical terms in description
+  const historicalTerms = ["history", "historical", "ancient", "war", "battle", "event", "historic"];
+  for (const term of historicalTerms) {
+    if (imageDesc.includes(term)) {
+      score += 10;
+    }
+  }
+  
+  // Prefer images with people/events (more impactful)
+  const impactfulTerms = ["people", "person", "soldier", "leader", "crowd", "ceremony", "event"];
+  for (const term of impactfulTerms) {
+    if (imageDesc.includes(term)) {
+      score += 15;
+    }
+  }
+  
+  // Prefer higher quality (likes/downloads indicate quality)
+  if (image.likes) {
+    score += Math.min(image.likes / 100, 20); // Max 20 points for popularity
+  }
+  
+  // Prefer landscape orientation (better for Twitter)
+  if (image.width && image.height) {
+    const aspectRatio = image.width / image.height;
+    if (aspectRatio >= 1.5 && aspectRatio <= 2.5) {
+      score += 10; // Good for Twitter (2:1 ratio)
+    }
+  }
+  
+  return score;
+}
+
+/**
+ * Fetch image from Unsplash (free, high-quality historical photos)
+ * Now selects the BEST matching image from results
+ */
+async function fetchFromUnsplash(searchTerm, eventDescription = null) {
+  try {
+    const query = encodeURIComponent(searchTerm);
+    const url = `https://api.unsplash.com/search/photos?query=${query}&per_page=10&orientation=landscape`; // Get more results to choose from
+    
+    const headers = {};
+    if (process.env.UNSPLASH_ACCESS_KEY) {
+      headers['Authorization'] = `Client-ID ${process.env.UNSPLASH_ACCESS_KEY}`;
+    }
+    
+    const response = await axios.get(url, {
+      headers,
+      timeout: 10000,
+    });
+    
+    const photos = response.data?.results || [];
+    if (photos.length === 0) {
+      return null;
+    }
+    
+    // Score and rank images by relevance
+    const scoredPhotos = photos.map(photo => ({
+      photo,
+      score: scoreImageRelevance(photo, searchTerm, eventDescription)
+    })).sort((a, b) => b.score - a.score);
+    
+    // Get the best matching photo
+    const bestPhoto = scoredPhotos[0].photo;
+    const photoUrl = bestPhoto.urls?.regular || bestPhoto.urls?.small;
+    if (!photoUrl) {
+      return null;
+    }
+    
+    console.log(`[Image] Selected best Unsplash image (score: ${scoredPhotos[0].score}): ${bestPhoto.description || searchTerm}`);
+    
+    // Download image
+    const imgRes = await axios.get(photoUrl, {
+      responseType: "arraybuffer",
+      timeout: 10000,
+    });
+    
+    const rawImageBuffer = Buffer.from(imgRes.data);
+    return await processImageBuffer(rawImageBuffer);
+  } catch (err) {
+    console.log(`[Image] Unsplash search failed: ${err.message}`);
+    return null;
+  }
+}
+
+/**
+ * Fetch image from Pexels (free historical photos)
+ * Now selects the BEST matching image from results
+ */
+async function fetchFromPexels(searchTerm, eventDescription = null) {
+  try {
+    const query = encodeURIComponent(searchTerm);
+    const url = `https://api.pexels.com/v1/search?query=${query}&per_page=15&orientation=landscape`; // Get more results
+    
+    const headers = {};
+    if (process.env.PEXELS_API_KEY) {
+      headers['Authorization'] = process.env.PEXELS_API_KEY;
+    } else {
+      return null;
+    }
+    
+    const response = await axios.get(url, {
+      headers,
+      timeout: 10000,
+    });
+    
+    const photos = response.data?.photos || [];
+    if (photos.length === 0) {
+      return null;
+    }
+    
+    // Score and rank images by relevance
+    const scoredPhotos = photos.map(photo => {
+      const photoDesc = (photo.alt || "").toLowerCase();
+      let score = 0;
+      const searchLower = searchTerm.toLowerCase();
+      
+      // Relevance scoring
+      if (photoDesc.includes(searchLower)) {
+        score += 30;
+      }
+      
+      // Historical terms boost
+      const historicalTerms = ["history", "historical", "ancient", "war", "battle", "vintage", "old"];
+      for (const term of historicalTerms) {
+        if (photoDesc.includes(term)) {
+          score += 10;
+        }
+      }
+      
+      // Impactful content (people, events)
+      const impactfulTerms = ["people", "person", "soldier", "crowd", "ceremony", "event", "monument"];
+      for (const term of impactfulTerms) {
+        if (photoDesc.includes(term)) {
+          score += 15;
+        }
+      }
+      
+      // Prefer higher resolution (quality indicator)
+      if (photo.width && photo.height) {
+        const pixels = photo.width * photo.height;
+        if (pixels > 2000000) { // > 2MP
+          score += 10;
+        }
+        // Good aspect ratio for Twitter
+        const aspectRatio = photo.width / photo.height;
+        if (aspectRatio >= 1.5 && aspectRatio <= 2.5) {
+          score += 10;
+        }
+      }
+      
+      return { photo, score };
+    }).sort((a, b) => b.score - a.score);
+    
+    // Get the best matching photo
+    const bestPhoto = scoredPhotos[0].photo;
+    const photoUrl = bestPhoto.src?.large || bestPhoto.src?.medium;
+    if (!photoUrl) {
+      return null;
+    }
+    
+    console.log(`[Image] Selected best Pexels image (score: ${scoredPhotos[0].score}): ${bestPhoto.alt || searchTerm}`);
+    
+    // Download image
+    const imgRes = await axios.get(photoUrl, {
+      responseType: "arraybuffer",
+      timeout: 10000,
+    });
+    
+    const rawImageBuffer = Buffer.from(imgRes.data);
+    return await processImageBuffer(rawImageBuffer);
+  } catch (err) {
+    console.log(`[Image] Pexels search failed: ${err.message}`);
+    return null;
+  }
+}
+
+/**
+ * Search Wikimedia Commons directly (more images than Wikipedia pages)
+ */
+async function fetchFromWikimediaCommons(searchTerm) {
+  try {
+    const query = encodeURIComponent(searchTerm);
+    const url = `https://commons.wikimedia.org/w/api.php`;
+    
+    const response = await axios.get(url, {
+      params: {
+        action: "query",
+        list: "search",
+        srsearch: query,
+        format: "json",
+        srlimit: 5,
+        origin: "*",
+      },
+      headers: {
+        'User-Agent': 'DateTodayBot/1.0 (https://github.com/yourusername/datetoday-bot; contact@example.com)'
+      },
+      timeout: 10000,
+    });
+    
+    const pages = response.data?.query?.search || [];
+    if (pages.length === 0) {
+      return null;
+    }
+    
+    // Get first page
+    const pageId = pages[0].pageid;
+    
+    // Get page images
+    const pageInfoRes = await axios.get(url, {
+      params: {
+        action: "query",
+        pageids: pageId,
+        prop: "pageimages",
+        pithumbsize: 1200,
+        format: "json",
+        origin: "*",
+      },
+      headers: {
+        'User-Agent': 'DateTodayBot/1.0 (https://github.com/yourusername/datetoday-bot; contact@example.com)'
+      },
+      timeout: 10000,
+    });
+    
+    const pageInfo = pageInfoRes.data?.query?.pages?.[pageId];
+    if (!pageInfo?.thumbnail?.source) {
+      return null;
+    }
+    
+    const imageUrl = pageInfo.thumbnail.source;
+    console.log(`[Image] Found Wikimedia Commons image: ${pages[0].title}`);
+    
+    // Download image
+    const imgRes = await axios.get(imageUrl, {
+      responseType: "arraybuffer",
+      timeout: 10000,
+    });
+    
+    const rawImageBuffer = Buffer.from(imgRes.data);
+    return await processImageBuffer(rawImageBuffer);
+  } catch (err) {
+    console.log(`[Image] Wikimedia Commons search failed: ${err.message}`);
+    return null;
+  }
+}
+
+/**
  * Search Wikipedia with multiple query strategies
  */
 async function searchWikipediaMultipleStrategies(event) {
@@ -169,6 +432,9 @@ async function searchWikipediaMultipleStrategies(event) {
             format: "json",
             srlimit: 5, // Try top 5 results instead of just 1
             origin: "*",
+          },
+          headers: {
+            'User-Agent': 'DateTodayBot/1.0 (https://github.com/yourusername/datetoday-bot; contact@example.com)'
           },
           timeout: 10000,
         }
@@ -245,17 +511,20 @@ async function fetchGenericHistoricalImage(year = null) {
           const searchRes = await axios.get(
             "https://en.wikipedia.org/w/api.php",
             {
-              params: {
-                action: "query",
-                list: "search",
-                srsearch: term,
-                format: "json",
-                srlimit: 10, // Increased
-                origin: "*",
-              },
-              timeout: 15000,
-            }
-          );
+          params: {
+            action: "query",
+            list: "search",
+            srsearch: term,
+            format: "json",
+            srlimit: 10, // Increased
+            origin: "*",
+          },
+          headers: {
+            'User-Agent': 'DateTodayBot/1.0 (https://github.com/yourusername/datetoday-bot; contact@example.com)'
+          },
+          timeout: 15000,
+        }
+      );
           
           const pages = searchRes.data?.query?.search || [];
           for (const page of pages) {
@@ -299,6 +568,9 @@ async function fetchGenericHistoricalImage(year = null) {
               format: "json",
               origin: "*",
             },
+            headers: {
+              'User-Agent': 'DateTodayBot/1.0 (https://github.com/yourusername/datetoday-bot; contact@example.com)'
+            },
             timeout: 15000,
           }
         );
@@ -335,6 +607,9 @@ async function fetchGenericHistoricalImage(year = null) {
               format: "json",
               srlimit: 10,
               origin: "*",
+            },
+            headers: {
+              'User-Agent': 'DateTodayBot/1.0 (https://github.com/yourusername/datetoday-bot; contact@example.com)'
             },
             timeout: 15000,
           }
@@ -479,6 +754,9 @@ export async function fetchEventImage(event, requireImage = true) {
               srlimit: 5,
               origin: "*",
             },
+            headers: {
+              'User-Agent': 'DateTodayBot/1.0 (https://github.com/yourusername/datetoday-bot; contact@example.com)'
+            },
             timeout: 10000,
           }
         );
@@ -511,6 +789,9 @@ export async function fetchEventImage(event, requireImage = true) {
               format: "json",
               srlimit: 5,
               origin: "*",
+            },
+            headers: {
+              'User-Agent': 'DateTodayBot/1.0 (https://github.com/yourusername/datetoday-bot; contact@example.com)'
             },
             timeout: 10000,
           }
@@ -650,6 +931,9 @@ export async function fetchImageForText(text, requireImage = true) {
               format: "json",
               srlimit: 5, // Try top 5 results
               origin: "*",
+            },
+            headers: {
+              'User-Agent': 'DateTodayBot/1.0 (https://github.com/yourusername/datetoday-bot; contact@example.com)'
             },
             timeout: 10000,
           }

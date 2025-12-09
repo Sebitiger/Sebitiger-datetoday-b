@@ -50,7 +50,7 @@ export async function postDailyTweet() {
     });
 
     // 2. Generate main tweet text
-    const mainTweetText = await generateMainTweet(event);
+    let mainTweetText = await generateMainTweet(event);
     info("[Daily] Main tweet text generated");
 
     // 3. Fetch an image for the event (REQUIRED - try multiple events if needed)
