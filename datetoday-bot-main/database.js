@@ -11,6 +11,7 @@ const __dirname = path.dirname(__filename);
 
 const DATA_DIR = path.join(__dirname, "data");
 const POSTED_EVENTS_FILE = path.join(DATA_DIR, "posted-events.json");
+const POSTED_CONTENT_FILE = path.join(DATA_DIR, "posted-content.json");
 const INTERACTIONS_FILE = path.join(DATA_DIR, "interactions.json");
 const POLLS_FILE = path.join(DATA_DIR, "polls.json");
 
@@ -153,6 +154,81 @@ export async function markPollAnswered(pollId) {
 }
 
 /**
+ * Create content hash from text (for deduplication)
+ */
+function createContentHash(text) {
+  // Extract key phrases/terms from text (first 100 chars, normalized)
+  const normalized = text.toLowerCase()
+    .replace(/[^\w\s]/g, ' ') // Remove punctuation
+    .replace(/\s+/g, ' ') // Normalize whitespace
+    .trim()
+    .slice(0, 100);
+  
+  // Extract important terms (words longer than 4 chars, excluding common words)
+  const words = normalized.split(' ').filter(w => 
+    w.length > 4 && 
+    !['that', 'this', 'with', 'from', 'about', 'which', 'their', 'there', 'would', 'could'].includes(w)
+  );
+  
+  // Return hash based on key terms
+  return words.slice(0, 5).join('-').substring(0, 50);
+}
+
+/**
+ * Check if similar content was posted recently (within last 7 days)
+ */
+export async function isContentDuplicate(text, daysToCheck = 7) {
+  const content = await loadJSON(POSTED_CONTENT_FILE);
+  const contentHash = createContentHash(text);
+  const cutoffTime = Date.now() - (daysToCheck * 24 * 60 * 60 * 1000);
+  
+  // Check if same hash exists and was posted recently
+  for (const [hash, data] of Object.entries(content)) {
+    if (hash === contentHash || hash.includes(contentHash) || contentHash.includes(hash)) {
+      const postedTime = new Date(data.timestamp).getTime();
+      if (postedTime > cutoffTime) {
+        // Also check if the actual text is very similar (80% match)
+        const similarity = calculateSimilarity(text.toLowerCase(), data.text?.toLowerCase() || '');
+        if (similarity > 0.8) {
+          return true;
+        }
+      }
+    }
+  }
+  
+  return false;
+}
+
+/**
+ * Calculate text similarity (simple word overlap)
+ */
+function calculateSimilarity(text1, text2) {
+  const words1 = new Set(text1.split(/\s+/).filter(w => w.length > 3));
+  const words2 = new Set(text2.split(/\s+/).filter(w => w.length > 3));
+  
+  const intersection = new Set([...words1].filter(x => words2.has(x)));
+  const union = new Set([...words1, ...words2]);
+  
+  return intersection.size / union.size;
+}
+
+/**
+ * Mark content as posted (for deduplication)
+ */
+export async function markContentPosted(text, tweetId = null) {
+  const content = await loadJSON(POSTED_CONTENT_FILE);
+  const contentHash = createContentHash(text);
+  
+  content[contentHash] = {
+    text: text.slice(0, 200), // Store first 200 chars for comparison
+    tweetId,
+    timestamp: new Date().toISOString(),
+  };
+  
+  await saveJSON(POSTED_CONTENT_FILE, content);
+}
+
+/**
  * Clean old data (keep last 30 days)
  */
 export async function cleanOldData() {
@@ -179,6 +255,17 @@ export async function cleanOldData() {
     }
   }
   await saveJSON(POLLS_FILE, cleanedPolls);
+
+  // Clean posted content (keep last 7 days)
+  const postedContent = await loadJSON(POSTED_CONTENT_FILE);
+  const cleanedContent = {};
+  for (const [hash, data] of Object.entries(postedContent)) {
+    const postedTime = new Date(data.timestamp).getTime();
+    if (postedTime > (Date.now() - (7 * 24 * 60 * 60 * 1000))) {
+      cleanedContent[hash] = data;
+    }
+  }
+  await saveJSON(POSTED_CONTENT_FILE, cleanedContent);
 
   console.log("[Database] Cleaned old data");
 }

@@ -1,14 +1,36 @@
 import { generateEveningFact } from "./generateFact.js";
 import { postTweet, postTweetWithImage } from "./twitterClient.js";
 import { fetchImageForText } from "./fetchImage.js";
+import { isContentDuplicate, markContentPosted } from "./database.js";
 
 export async function postEveningFact() {
   console.log("[Evening] Starting evening fact job...");
   try {
-    const fact = await generateEveningFact();
+    // Generate fact and check for duplicates (retry up to 5 times)
+    let fact = null;
+    let attempts = 0;
+    const maxAttempts = 5;
+    
+    while (attempts < maxAttempts) {
+      fact = await generateEveningFact();
+      
+      if (!fact || !fact.trim().length) {
+        attempts++;
+        continue;
+      }
+      
+      // Check if similar content was posted recently
+      const isDuplicate = await isContentDuplicate(fact, 7); // Check last 7 days
+      if (!isDuplicate) {
+        break; // Found unique content
+      }
+      
+      console.log(`[Evening] Generated fact is similar to recent post, generating new one... (attempt ${attempts + 1}/${maxAttempts})`);
+      attempts++;
+    }
     
     if (!fact || !fact.trim().length) {
-      throw new Error("Generated fact is empty");
+      throw new Error("Failed to generate unique evening fact after multiple attempts");
     }
 
     // Fetch an image based on the fact content (REQUIRED - retry until found)
@@ -43,7 +65,11 @@ export async function postEveningFact() {
     }
 
     // Post with image (REQUIRED)
-    await postTweetWithImage(fact, imageBuffer, null);
+    const tweetId = await postTweetWithImage(fact, imageBuffer, null);
+    
+    // Mark content as posted to prevent duplicates
+    await markContentPosted(fact, tweetId);
+    
     console.log("[Evening] Evening fact job completed successfully.");
   } catch (err) {
     console.error("[Evening] Job failed:", err.message || err);

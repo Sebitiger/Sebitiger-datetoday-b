@@ -5,6 +5,7 @@ import { openai, SYSTEM_PROMPT } from "./openaiCommon.js";
 import { withTimeout, retryWithBackoff, cleanAIContent } from "./utils.js";
 import { postTweet, postThread, postTweetWithImage } from "./twitterClient.js";
 import { fetchImageForText, fetchEventImage } from "./fetchImage.js";
+import { isContentDuplicate, markContentPosted } from "./database.js";
 
 const OPENAI_TIMEOUT = 60000; // 60 seconds for longer content
 
@@ -216,10 +217,32 @@ export async function postWhatIfThread() {
 export async function postHiddenConnection() {
   try {
     console.log("[Viral] Generating hidden connection...");
-    const tweet = await generateHiddenConnection();
+    
+    // Generate and check for duplicates (retry up to 5 times)
+    let tweet = null;
+    let attempts = 0;
+    const maxAttempts = 5;
+    
+    while (attempts < maxAttempts) {
+      tweet = await generateHiddenConnection();
+      
+      if (!tweet) {
+        attempts++;
+        continue;
+      }
+      
+      // Check if similar content was posted recently
+      const isDuplicate = await isContentDuplicate(tweet, 7); // Check last 7 days
+      if (!isDuplicate) {
+        break; // Found unique content
+      }
+      
+      console.log(`[Viral] Generated hidden connection is similar to recent post, generating new one... (attempt ${attempts + 1}/${maxAttempts})`);
+      attempts++;
+    }
     
     if (!tweet) {
-      throw new Error("Failed to generate hidden connection");
+      throw new Error("Failed to generate unique hidden connection after multiple attempts");
     }
 
     // Fetch an image based on the tweet content (REQUIRED - retry until found)
@@ -253,7 +276,11 @@ export async function postHiddenConnection() {
       throw new Error("Failed to fetch required image for hidden connection");
     }
 
-    await postTweetWithImage(tweet, imageBuffer, null);
+    const tweetId = await postTweetWithImage(tweet, imageBuffer, null);
+    
+    // Mark content as posted to prevent duplicates
+    await markContentPosted(tweet, tweetId);
+    
     console.log("[Viral] Hidden connection posted successfully");
   } catch (err) {
     console.error("[Viral] Error posting hidden connection:", err.message);
@@ -353,10 +380,32 @@ Generate a viral quick fact about a MAJOR historical event now:
 export async function postQuickFact() {
   try {
     console.log("[Viral] Generating quick fact...");
-    const tweet = await generateQuickFact();
+    
+    // Generate fact and check for duplicates (retry up to 5 times)
+    let tweet = null;
+    let attempts = 0;
+    const maxAttempts = 5;
+    
+    while (attempts < maxAttempts) {
+      tweet = await generateQuickFact();
+      
+      if (!tweet) {
+        attempts++;
+        continue;
+      }
+      
+      // Check if similar content was posted recently
+      const isDuplicate = await isContentDuplicate(tweet, 7); // Check last 7 days
+      if (!isDuplicate) {
+        break; // Found unique content
+      }
+      
+      console.log(`[Viral] Generated quick fact is similar to recent post, generating new one... (attempt ${attempts + 1}/${maxAttempts})`);
+      attempts++;
+    }
     
     if (!tweet) {
-      throw new Error("Failed to generate quick fact");
+      throw new Error("Failed to generate unique quick fact after multiple attempts");
     }
 
     // Fetch an image based on the tweet content (REQUIRED - retry until found)
@@ -390,7 +439,11 @@ export async function postQuickFact() {
       throw new Error("Failed to fetch required image for quick fact");
     }
 
-    await postTweetWithImage(tweet, imageBuffer, null);
+    const tweetId = await postTweetWithImage(tweet, imageBuffer, null);
+    
+    // Mark content as posted to prevent duplicates
+    await markContentPosted(tweet, tweetId);
+    
     console.log("[Viral] Quick fact posted successfully");
   } catch (err) {
     console.error("[Viral] Error posting quick fact:", err.message);
@@ -487,10 +540,32 @@ Generate a viral history debunk about a MAJOR historical event now:
 export async function postHistoryDebunk() {
   try {
     console.log("[Viral] Generating history debunk...");
-    const tweet = await generateHistoryDebunk();
+    
+    // Generate and check for duplicates (retry up to 5 times)
+    let tweet = null;
+    let attempts = 0;
+    const maxAttempts = 5;
+    
+    while (attempts < maxAttempts) {
+      tweet = await generateHistoryDebunk();
+      
+      if (!tweet) {
+        attempts++;
+        continue;
+      }
+      
+      // Check if similar content was posted recently
+      const isDuplicate = await isContentDuplicate(tweet, 7); // Check last 7 days
+      if (!isDuplicate) {
+        break; // Found unique content
+      }
+      
+      console.log(`[Viral] Generated history debunk is similar to recent post, generating new one... (attempt ${attempts + 1}/${maxAttempts})`);
+      attempts++;
+    }
     
     if (!tweet) {
-      throw new Error("Failed to generate history debunk");
+      throw new Error("Failed to generate unique history debunk after multiple attempts");
     }
 
     // Fetch an image based on the tweet content (REQUIRED - retry until found)
@@ -524,7 +599,11 @@ export async function postHistoryDebunk() {
       throw new Error("Failed to fetch required image for history debunk");
     }
 
-    await postTweetWithImage(tweet, imageBuffer, null);
+    const tweetId = await postTweetWithImage(tweet, imageBuffer, null);
+    
+    // Mark content as posted to prevent duplicates
+    await markContentPosted(tweet, tweetId);
+    
     console.log("[Viral] History debunk posted successfully");
   } catch (err) {
     console.error("[Viral] Error posting history debunk:", err.message);

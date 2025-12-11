@@ -84,28 +84,67 @@ async function fetchImageFromPageId(pageId) {
 
 /**
  * Process image buffer to optimal Twitter format
+ * Handles both landscape and portrait images intelligently
  */
 async function processImageBuffer(rawImageBuffer) {
   try {
+    // Get image metadata to determine orientation
+    const metadata = await sharp(rawImageBuffer).metadata();
+    const originalWidth = metadata.width || 1200;
+    const originalHeight = metadata.height || 600;
+    const aspectRatio = originalWidth / originalHeight;
+    
+    const isPortrait = aspectRatio < 1; // Height > Width
+    const isSquare = Math.abs(aspectRatio - 1) < 0.1;
+    
+    console.log(`[Image] Original dimensions: ${originalWidth}x${originalHeight}, aspect ratio: ${aspectRatio.toFixed(2)}, portrait: ${isPortrait}`);
+    
+    // Twitter optimal: 1200x600 (2:1 landscape) or 1200x675 (16:9)
+    // For portraits, we'll use "contain" to preserve the full image with padding
     const targetWidth = 1200;
     const targetHeight = 600;
     
-    const processedBuffer = await sharp(rawImageBuffer)
-      .resize(targetWidth, targetHeight, {
-        fit: "cover",
-        position: "center",
-      })
-      .jpeg({ quality: 90, mozjpeg: true })
-      .toBuffer();
+    let processedBuffer;
+    
+    if (isPortrait || isSquare) {
+      // For portraits/squares: Use "contain" to preserve full image, add padding
+      // This prevents cutting off faces/people
+      console.log("[Image] Portrait/square image detected - using 'contain' mode to preserve full image");
+      
+      processedBuffer = await sharp(rawImageBuffer)
+        .resize(targetWidth, targetHeight, {
+          fit: "contain", // Preserves full image, adds padding if needed
+          position: "center",
+          background: { r: 18, g: 18, b: 18, alpha: 1 } // Dark background (Twitter-like dark mode color)
+        })
+        .jpeg({ quality: 90, mozjpeg: true })
+        .toBuffer();
+    } else {
+      // For landscape: Use "cover" for optimal Twitter display
+      console.log("[Image] Landscape image - using 'cover' mode for optimal display");
+      
+      processedBuffer = await sharp(rawImageBuffer)
+        .resize(targetWidth, targetHeight, {
+          fit: "cover",
+          position: "center", // Smart center cropping
+        })
+        .jpeg({ quality: 90, mozjpeg: true })
+        .toBuffer();
+    }
     
     console.log("[Image] Image processed. Size:", (processedBuffer.length / 1024).toFixed(2), "KB");
     
+    // If still too large, reduce quality
     if (processedBuffer.length > 5 * 1024 * 1024) {
       console.warn("[Image] Image too large, reducing quality...");
+      const reducedWidth = 1000;
+      const reducedHeight = isPortrait || isSquare ? 1000 : 500; // Taller for portraits
+      
       return await sharp(rawImageBuffer)
-        .resize(1000, 500, {
-          fit: "cover",
+        .resize(reducedWidth, reducedHeight, {
+          fit: isPortrait || isSquare ? "contain" : "cover",
           position: "center",
+          background: isPortrait || isSquare ? { r: 18, g: 18, b: 18, alpha: 1 } : undefined
         })
         .jpeg({ quality: 85, mozjpeg: true })
         .toBuffer();
@@ -119,6 +158,41 @@ async function processImageBuffer(rawImageBuffer) {
 }
 
 /**
+ * Validate if image actually matches the event (reject clearly wrong matches)
+ */
+function validateImageMatch(image, searchTerm, eventDescription = null) {
+  if (!eventDescription) return true; // Can't validate without description
+  
+  const imageDesc = (image.description || image.alt_description || image.title || "").toLowerCase();
+  const eventLower = eventDescription.toLowerCase();
+  
+  // Extract key terms from event (excluding generic words)
+  const eventKeyTerms = eventLower
+    .split(/\s+/)
+    .filter(w => w.length > 4 && !["the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by", "from", "this", "that", "was", "were", "is", "are", "had", "have", "has"].includes(w));
+  
+  // Check if image matches at least one key term
+  const hasMatchingTerm = eventKeyTerms.some(term => imageDesc.includes(term));
+  
+  // Special case: If event is about war but image is generic Christmas/holiday, reject
+  if (eventLower.includes("war") && !imageDesc.includes("war") && !imageDesc.includes("soldier") && !imageDesc.includes("military") && !imageDesc.includes("battle")) {
+    const genericHolidayTerms = ["christmas", "holiday", "celebration", "nativity", "decoration"];
+    if (genericHolidayTerms.some(term => imageDesc.includes(term))) {
+      console.log(`[Image] Rejecting image: Generic holiday image doesn't match war event`);
+      return false;
+    }
+  }
+  
+  // If we have key terms but image matches none, it's likely wrong
+  if (eventKeyTerms.length > 2 && !hasMatchingTerm) {
+    console.log(`[Image] Warning: Image may not match event (no key terms found)`);
+    // Don't reject, but log warning - scoring will handle it
+  }
+  
+  return true;
+}
+
+/**
  * Score image relevance based on search term and image metadata
  */
 function scoreImageRelevance(image, searchTerm, eventDescription = null) {
@@ -128,24 +202,55 @@ function scoreImageRelevance(image, searchTerm, eventDescription = null) {
   
   // Check image description/title relevance
   const imageDesc = (image.description || image.alt_description || image.title || "").toLowerCase();
+  
+  // CRITICAL: Penalize generic matches that don't match the actual event
+  const genericTerms = ["christmas", "holiday", "celebration", "nativity", "decoration", "lights"];
+  const hasGenericOnly = genericTerms.some(term => imageDesc.includes(term)) && 
+                         !descLower.split(/\s+/).some(word => word.length > 4 && imageDesc.includes(word));
+  
+  if (hasGenericOnly && descLower.includes("war") && !imageDesc.includes("war")) {
+    score -= 50; // Heavy penalty for generic Christmas image when event is about war
+  }
+  
+  // Exact phrase match (highest priority)
   if (imageDesc.includes(searchLower)) {
-    score += 30;
+    score += 40; // Increased from 30
+  }
+  
+  // Check if image matches key terms from event description
+  if (eventDescription) {
+    const eventWords = eventDescription.toLowerCase()
+      .split(/\s+/)
+      .filter(w => w.length > 4 && !["the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by"].includes(w));
+    
+    let matchingWords = 0;
+    for (const word of eventWords.slice(0, 5)) {
+      if (imageDesc.includes(word)) {
+        matchingWords++;
+      }
+    }
+    score += matchingWords * 15; // 15 points per matching key word
   }
   
   // Check for key historical terms in description
-  const historicalTerms = ["history", "historical", "ancient", "war", "battle", "event", "historic"];
+  const historicalTerms = ["history", "historical", "ancient", "war", "battle", "event", "historic", "soldier", "trench", "military"];
   for (const term of historicalTerms) {
     if (imageDesc.includes(term)) {
       score += 10;
     }
   }
   
-  // Prefer images with people/events (more impactful)
-  const impactfulTerms = ["people", "person", "soldier", "leader", "crowd", "ceremony", "event"];
+  // Prefer images with people/events (more impactful) - but only if relevant
+  const impactfulTerms = ["people", "person", "soldier", "leader", "crowd", "ceremony", "event", "trench", "battlefield"];
   for (const term of impactfulTerms) {
     if (imageDesc.includes(term)) {
       score += 15;
     }
+  }
+  
+  // Penalize clearly wrong matches
+  if (descLower.includes("world war") && !imageDesc.includes("war") && !imageDesc.includes("soldier") && !imageDesc.includes("military")) {
+    score -= 30; // Penalty for non-war images when event is about war
   }
   
   // Prefer higher quality (likes/downloads indicate quality)
@@ -188,11 +293,20 @@ async function fetchFromUnsplash(searchTerm, eventDescription = null) {
       return null;
     }
     
-    // Score and rank images by relevance
-    const scoredPhotos = photos.map(photo => ({
-      photo,
-      score: scoreImageRelevance(photo, searchTerm, eventDescription)
-    })).sort((a, b) => b.score - a.score);
+    // Score and rank images by relevance, filtering out clearly wrong matches
+    const scoredPhotos = photos
+      .filter(photo => validateImageMatch(photo, searchTerm, eventDescription))
+      .map(photo => ({
+        photo,
+        score: scoreImageRelevance(photo, searchTerm, eventDescription)
+      }))
+      .filter(item => item.score > 0) // Only keep images with positive scores
+      .sort((a, b) => b.score - a.score);
+    
+    if (scoredPhotos.length === 0) {
+      console.log(`[Image] No valid images found after filtering`);
+      return null;
+    }
     
     // Get the best matching photo
     const bestPhoto = scoredPhotos[0].photo;
@@ -243,31 +357,67 @@ async function fetchFromPexels(searchTerm, eventDescription = null) {
       return null;
     }
     
-    // Score and rank images by relevance
-    const scoredPhotos = photos.map(photo => {
+    // Score and rank images by relevance, filtering out clearly wrong matches
+    const validPhotos = photos.filter(photo => validateImageMatch(photo, searchTerm, eventDescription));
+    
+    if (validPhotos.length === 0) {
+      console.log(`[Image] No valid images found after validation`);
+      return null;
+    }
+    
+    const scoredPhotos = validPhotos.map(photo => {
       const photoDesc = (photo.alt || "").toLowerCase();
       let score = 0;
       const searchLower = searchTerm.toLowerCase();
       
-      // Relevance scoring
+      // CRITICAL: Penalize generic matches
+      const genericTerms = ["christmas", "holiday", "celebration", "nativity", "decoration", "lights"];
+      const hasGenericOnly = genericTerms.some(term => photoDesc.includes(term)) && 
+                             !eventDescription?.toLowerCase().split(/\s+/).some(word => word.length > 4 && photoDesc.includes(word));
+      
+      if (hasGenericOnly && eventDescription?.toLowerCase().includes("war") && !photoDesc.includes("war")) {
+        score -= 50; // Heavy penalty for generic Christmas image when event is about war
+      }
+      
+      // Exact match (highest priority)
       if (photoDesc.includes(searchLower)) {
-        score += 30;
+        score += 40; // Increased from 30
+      }
+      
+      // Check if image matches key terms from event description
+      if (eventDescription) {
+        const eventWords = eventDescription.toLowerCase()
+          .split(/\s+/)
+          .filter(w => w.length > 4 && !["the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by"].includes(w));
+        
+        let matchingWords = 0;
+        for (const word of eventWords.slice(0, 5)) {
+          if (photoDesc.includes(word)) {
+            matchingWords++;
+          }
+        }
+        score += matchingWords * 15; // 15 points per matching key word
       }
       
       // Historical terms boost
-      const historicalTerms = ["history", "historical", "ancient", "war", "battle", "vintage", "old"];
+      const historicalTerms = ["history", "historical", "ancient", "war", "battle", "vintage", "old", "soldier", "trench", "military"];
       for (const term of historicalTerms) {
         if (photoDesc.includes(term)) {
           score += 10;
         }
       }
       
-      // Impactful content (people, events)
-      const impactfulTerms = ["people", "person", "soldier", "crowd", "ceremony", "event", "monument"];
+      // Impactful content (people, events) - but only if relevant
+      const impactfulTerms = ["people", "person", "soldier", "crowd", "ceremony", "event", "monument", "trench", "battlefield"];
       for (const term of impactfulTerms) {
         if (photoDesc.includes(term)) {
           score += 15;
         }
+      }
+      
+      // Penalize clearly wrong matches
+      if (eventDescription?.toLowerCase().includes("world war") && !photoDesc.includes("war") && !photoDesc.includes("soldier") && !photoDesc.includes("military")) {
+        score -= 30; // Penalty for non-war images when event is about war
       }
       
       // Prefer higher resolution (quality indicator)
@@ -740,15 +890,64 @@ export async function fetchEventImage(event, requireImage = true) {
   try {
     console.log("[Image] Starting image fetch for event:", event.description?.slice(0, 80));
     
-    // Strategy 1: Try Pexels FIRST (most reliable with API key)
-    if (process.env.PEXELS_API_KEY) {
-      const eventSearchTerms = [
-        event.description?.slice(0, 30),
-        event.year ? `${event.year} history` : null,
-        event.description?.split(" ").slice(0, 3).join(" "),
-        event.year ? `history ${event.year}` : null
-      ].filter(Boolean);
-      
+    // Strategy 1: Extract accurate search terms from event (prioritize specific historical phrases)
+    const eventSearchTerms = [];
+    
+    // Extract specific historical event phrases (highest priority)
+    const historicalEventPatterns = [
+      /(world war [i1-2]|ww[i1-2]|great war)/i,
+      /(christmas truce|truce of \d{4})/i,
+      /(battle of [a-z\s]+)/i,
+      /(treaty of [a-z\s]+)/i,
+      /(assassination of [a-z\s]+)/i,
+      /(declaration of [a-z\s]+)/i,
+      /(revolution of \d{4}|[a-z]+ revolution)/i,
+      /(landing|invasion|attack|bombing) of [a-z\s]+/i,
+    ];
+    
+    for (const pattern of historicalEventPatterns) {
+      const match = event.description.match(pattern);
+      if (match) {
+        eventSearchTerms.push(match[0]);
+        console.log(`[Image] Found specific historical event phrase: "${match[0]}"`);
+      }
+    }
+    
+    // Add year + key terms (excluding generic words)
+    if (event.year) {
+      const importantTerms = event.description
+        .split(" ")
+        .filter(word => {
+          const lower = word.toLowerCase();
+          return !["the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by", "christmas", "holiday", "celebration"].includes(lower) &&
+                 word.length > 3;
+        })
+        .slice(0, 4)
+        .join(" ");
+      if (importantTerms.length > 5) {
+        eventSearchTerms.push(`${event.year} ${importantTerms}`);
+      }
+    }
+    
+    // Add capitalized proper nouns
+    const capitalizedWords = event.description
+      .split(" ")
+      .filter(word => word.length > 3 && word[0] === word[0].toUpperCase())
+      .slice(0, 5)
+      .join(" ");
+    if (capitalizedWords.length > 5) {
+      eventSearchTerms.push(capitalizedWords);
+    }
+    
+    // Add full description (first 30 chars) only if it doesn't contain generic terms
+    const genericTerms = ['christmas', 'holiday', 'celebration'];
+    const first30 = event.description?.slice(0, 30);
+    if (first30 && !genericTerms.some(term => first30.toLowerCase().includes(term))) {
+      eventSearchTerms.push(first30);
+    }
+    
+    // Try Pexels FIRST (most reliable with API key)
+    if (process.env.PEXELS_API_KEY && eventSearchTerms.length > 0) {
       for (const term of eventSearchTerms) {
         if (!term || term.length < 3) continue;
         console.log(`[Image] Trying Pexels first for: "${term}"`);
@@ -767,29 +966,25 @@ export async function fetchEventImage(event, requireImage = true) {
       return imageBuffer;
     }
     
-    // Strategy 3: Try alternative sources (Unsplash, Wikimedia Commons)
-    const eventSearchTerms = [
-      event.description?.slice(0, 30),
-      event.year ? `${event.year} history` : null,
-      event.description?.split(" ").slice(0, 3).join(" "),
-      event.year ? `history ${event.year}` : null
-    ].filter(Boolean);
-    
-    for (const term of eventSearchTerms) {
-      if (!term || term.length < 3) continue;
-      
-      // Try Unsplash (with event description for better matching)
-      imageBuffer = await fetchFromUnsplash(term, event.description);
-      if (imageBuffer) {
-        console.log(`[Image] ✅ Found best matching image from Unsplash for event`);
-        return imageBuffer;
-      }
-      
-      // Try Wikimedia Commons
-      imageBuffer = await fetchFromWikimediaCommons(term);
-      if (imageBuffer) {
-        console.log(`[Image] ✅ Found image from Wikimedia Commons for event`);
-        return imageBuffer;
+    // Strategy 3: Try alternative sources (Unsplash, Wikimedia Commons) with accurate search terms
+    // Use the same accurate search terms we generated earlier
+    if (eventSearchTerms.length > 0) {
+      for (const term of eventSearchTerms) {
+        if (!term || term.length < 3) continue;
+        
+        // Try Unsplash (with event description for better matching)
+        imageBuffer = await fetchFromUnsplash(term, event.description);
+        if (imageBuffer) {
+          console.log(`[Image] ✅ Found best matching image from Unsplash for event`);
+          return imageBuffer;
+        }
+        
+        // Try Wikimedia Commons
+        imageBuffer = await fetchFromWikimediaCommons(term);
+        if (imageBuffer) {
+          console.log(`[Image] ✅ Found image from Wikimedia Commons for event`);
+          return imageBuffer;
+        }
       }
     }
     
@@ -932,6 +1127,86 @@ export async function fetchEventImage(event, requireImage = true) {
  * @param {string} text - Text content to search for (e.g., tweet text, historical fact)
  * @returns {Promise<Buffer|null>} - Image buffer or null if not found
  */
+/**
+ * Extract specific, accurate search terms from text
+ * Prioritizes historical events, people, places over generic terms
+ */
+function extractAccurateSearchTerms(text) {
+  const strategies = [];
+  const cleanText = text.replace(/[📅🗓️📜🌍🤯💡]/g, "").toLowerCase();
+  
+  // Strategy 1: Extract key historical event phrases (highest priority)
+  const historicalEventPatterns = [
+    /(world war [i1-2]|ww[i1-2]|great war)/i,
+    /(christmas truce|truce of \d{4})/i,
+    /(battle of [a-z\s]+)/i,
+    /(treaty of [a-z\s]+)/i,
+    /(assassination of [a-z\s]+)/i,
+    /(declaration of [a-z\s]+)/i,
+    /(revolution of \d{4}|[a-z]+ revolution)/i,
+    /(landing|invasion|attack|bombing) of [a-z\s]+/i,
+  ];
+  
+  for (const pattern of historicalEventPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      strategies.push(match[0]);
+      console.log(`[Image] Found specific historical event phrase: "${match[0]}"`);
+    }
+  }
+  
+  // Strategy 2: Extract capitalized proper nouns (people, places, events)
+  const capitalizedWords = text
+    .split(" ")
+    .filter(word => word.length > 3 && word[0] === word[0].toUpperCase() && /^[A-Z]/.test(word))
+    .slice(0, 5)
+    .join(" ");
+  if (capitalizedWords.length > 5) {
+    strategies.push(capitalizedWords);
+  }
+  
+  // Strategy 3: Extract year + key terms (e.g., "1914 World War")
+  const yearMatch = text.match(/\b(1[0-9]{3}|20[0-2][0-9])\b/);
+  if (yearMatch) {
+    const year = yearMatch[1];
+    // Get important terms near the year
+    const words = text.split(/\s+/);
+    const yearIndex = words.findIndex(w => w.includes(year));
+    if (yearIndex >= 0) {
+      const contextWords = words.slice(Math.max(0, yearIndex - 2), yearIndex + 3)
+        .filter(w => w.length > 3 && !['the', 'a', 'an', 'in', 'on', 'at', 'of', 'to', 'for'].includes(w.toLowerCase()))
+        .join(" ");
+      if (contextWords.length > 5) {
+        strategies.push(contextWords);
+      }
+    }
+  }
+  
+  // Strategy 4: Remove generic terms and keep specific ones
+  const genericTerms = ['christmas', 'holiday', 'celebration', 'event', 'moment', 'day', 'time', 'period'];
+  const importantWords = text
+    .split(" ")
+    .filter(word => {
+      const lower = word.toLowerCase().replace(/[^\w]/g, '');
+      return word.length > 3 && 
+             !genericTerms.includes(lower) &&
+             !['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'this', 'that', 'these', 'those'].includes(lower);
+    })
+    .slice(0, 6)
+    .join(" ");
+  if (importantWords.length > 5) {
+    strategies.push(importantWords);
+  }
+  
+  // Strategy 5: Full description (first 30 chars) - but only if it contains specific terms
+  const first30 = text.slice(0, 30);
+  if (first30.length > 10 && !genericTerms.some(term => first30.toLowerCase().includes(term))) {
+    strategies.push(first30);
+  }
+  
+  return strategies.filter(s => s && s.trim().length > 3);
+}
+
 export async function fetchImageForText(text, requireImage = true) {
   try {
     if (!text || typeof text !== "string" || text.trim().length === 0) {
@@ -944,18 +1219,20 @@ export async function fetchImageForText(text, requireImage = true) {
 
     console.log("[Image] Starting image fetch for text:", text.slice(0, 80));
 
-    // Build multiple search strategies
-    const strategies = [];
+    // Build accurate search strategies
+    const strategies = extractAccurateSearchTerms(text);
     
-    // Strategy 1: Extract capitalized words (likely proper nouns)
-    const capitalizedWords = text
-      .replace(/[📅🗓️📜🌍🤯💡]/g, "")
-      .split(" ")
-      .filter(word => word.length > 3 && word[0] === word[0].toUpperCase() && /^[A-Z]/.test(word))
-      .slice(0, 5)
-      .join(" ");
-    if (capitalizedWords.length > 5) {
-      strategies.push(capitalizedWords);
+    if (strategies.length === 0) {
+      // Fallback to old method if extraction fails
+      const capitalizedWords = text
+        .replace(/[📅🗓️📜🌍🤯💡]/g, "")
+        .split(" ")
+        .filter(word => word.length > 3 && word[0] === word[0].toUpperCase() && /^[A-Z]/.test(word))
+        .slice(0, 5)
+        .join(" ");
+      if (capitalizedWords.length > 5) {
+        strategies.push(capitalizedWords);
+      }
     }
     
     // Strategy 2: Extract year + key terms
