@@ -34,12 +34,95 @@ function isEventTooBroad(event) {
 }
 
 /**
+ * List of ICONIC, well-known historical events that should be prioritized
+ * These are events that most people know about
+ */
+const ICONIC_EVENTS = [
+  // Famous battles (everyone knows these)
+  "waterloo", "hastings", "gettysburg", "stalingrad", "normandy", "d-day", "d day", "pearl harbor",
+  "marathon", "thermopylae", "cannae", "actium", "tours", "agincourt", "leipzig",
+  "verdun", "somme", "battle of britain", "midway", "el alamein", "battle of the bulge",
+  "bunker hill", "yorktown", "saratoga", "antietam", "vicksburg", "appomattox",
+  
+  // Major historical events (world-changing moments)
+  "hegira", "hijra", "hegirah", "fall of constantinople", "fall of rome", "sack of rome",
+  "black death", "bubonic plague", "great fire of london", "great depression", "dust bowl",
+  "renaissance", "reformation", "crusades", "inquisition",
+  
+  // Famous treaties and agreements
+  "treaty of versailles", "treaty of westphalia", "treaty of paris", "magna carta",
+  "edict of nantes", "peace of westphalia", "treaty of ghent", "treaty of tordesillas",
+  
+  // Major discoveries and achievements
+  "columbus", "america discovered", "new world", "moon landing", "apollo", "first flight",
+  "wright brothers", "penicillin", "vaccine", "printing press", "gutenberg",
+  "sputnik", "first satellite", "first man in space", "yuri gagarin",
+  
+  // Famous assassinations
+  "assassination of lincoln", "assassination of kennedy", "assassination of archduke",
+  "assassination of julius caesar", "assassination of gandhi", "assassination of martin luther king",
+  "assassination of archduke ferdinand", "franz ferdinand",
+  
+  // Major revolutions
+  "french revolution", "american revolution", "russian revolution", "october revolution",
+  "industrial revolution", "glorious revolution", "chinese revolution",
+  
+  // Famous declarations
+  "declaration of independence", "declaration of rights", "universal declaration",
+  "emancipation proclamation", "magna carta",
+  
+  // Major disasters
+  "titanic", "hindenburg", "chernobyl", "pompeii", "krakatoa", "pompeii",
+  
+  // Famous historical figures (when they did something major)
+  "napoleon", "caesar", "julius caesar", "alexander the great", "genghis khan", "cleopatra",
+  "shakespeare", "da vinci", "leonardo", "michelangelo", "galileo", "newton", "darwin", "einstein",
+  "lincoln", "washington", "napoleon bonaparte",
+  
+  // Major dates (iconic years)
+  "1066", "1492", "1776", "1789", "1914", "1917", "1939", "1941", "1945",
+  
+  // Famous places/events
+  "berlin wall", "iron curtain", "cold war", "space race", "arms race",
+  "holocaust", "nuremberg", "hiroshima", "nagasaki"
+];
+
+/**
+ * Check if event matches an iconic, well-known historical event
+ */
+function isIconicEvent(event) {
+  const desc = event.description.toLowerCase();
+  const year = event.year?.toString() || "";
+  
+  // Check if description contains iconic event keywords
+  for (const iconic of ICONIC_EVENTS) {
+    if (desc.includes(iconic)) {
+      return true;
+    }
+  }
+  
+  // Check if year matches iconic years
+  if (ICONIC_EVENTS.includes(year)) {
+    return true;
+  }
+  
+  return false;
+}
+
+/**
  * Scores an event based on how "major" and specific it is historically
  * Higher score = more major/well-known/specific event
+ * NOW PRIORITIZES ICONIC, WELL-KNOWN EVENTS
  */
 function scoreEventMajority(event) {
   const desc = event.description.toLowerCase();
   let score = 0;
+
+  // HUGE BOOST for iconic, well-known events
+  if (isIconicEvent(event)) {
+    score += 100; // Massive boost for iconic events
+    console.log(`[Events] Iconic event detected: ${event.description?.slice(0, 60)}`);
+  }
 
   // Penalize broad/generic events heavily
   if (isEventTooBroad(event)) {
@@ -239,14 +322,20 @@ function selectMajorEvent(events) {
   const topCount = Math.max(1, Math.ceil(scoredEvents.length * 0.3));
   const topEvents = scoredEvents.slice(0, topCount);
 
-  // STRICT: Only select truly major events (score >= 50 for truly significant moments)
-  const majorEvents = scoredEvents.filter(item => item.score >= 50);
+  // STRICT: Prioritize ICONIC events (score >= 100), then very major (60+), then major (50+)
+  const iconicEvents = scoredEvents.filter(item => item.score >= 100);
   const veryMajorEvents = scoredEvents.filter(item => item.score >= 60);
+  const majorEvents = scoredEvents.filter(item => item.score >= 50);
   
-  // Prefer very major events (60+), then major (50+), only fallback to 40+ if nothing else
-  const candidates = veryMajorEvents.length > 0 ? veryMajorEvents :
+  // Prefer iconic events (100+), then very major (60+), then major (50+), only fallback to 40+ if nothing else
+  const candidates = iconicEvents.length > 0 ? iconicEvents :
+                     veryMajorEvents.length > 0 ? veryMajorEvents :
                      majorEvents.length > 0 ? majorEvents :
                      scoredEvents.filter(item => item.score >= 40); // Only fallback to 40+ if no major events
+  
+  if (iconicEvents.length > 0) {
+    console.log(`[Events] Found ${iconicEvents.length} iconic events - prioritizing these`);
+  }
 
   // Weighted random selection from candidates
   // Higher scores get higher weight, but still random
