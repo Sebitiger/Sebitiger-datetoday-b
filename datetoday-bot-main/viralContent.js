@@ -231,8 +231,8 @@ export async function postHiddenConnection() {
         continue;
       }
       
-      // Check if similar content was posted recently
-      const isDuplicate = await isContentDuplicate(tweet, 7); // Check last 7 days
+      // Check if similar content was posted recently (30 days - stricter)
+      const isDuplicate = await isContentDuplicate(tweet, 30); // Check last 30 days
       if (!isDuplicate) {
         break; // Found unique content
       }
@@ -394,8 +394,8 @@ export async function postQuickFact() {
         continue;
       }
       
-      // Check if similar content was posted recently
-      const isDuplicate = await isContentDuplicate(tweet, 7); // Check last 7 days
+      // Check if similar content was posted recently (30 days - stricter)
+      const isDuplicate = await isContentDuplicate(tweet, 30); // Check last 30 days
       if (!isDuplicate) {
         break; // Found unique content
       }
@@ -554,8 +554,8 @@ export async function postHistoryDebunk() {
         continue;
       }
       
-      // Check if similar content was posted recently
-      const isDuplicate = await isContentDuplicate(tweet, 7); // Check last 7 days
+      // Check if similar content was posted recently (30 days - stricter)
+      const isDuplicate = await isContentDuplicate(tweet, 30); // Check last 30 days
       if (!isDuplicate) {
         break; // Found unique content
       }

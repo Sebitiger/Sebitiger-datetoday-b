@@ -154,42 +154,97 @@ export async function markPollAnswered(pollId) {
 }
 
 /**
- * Create content hash from text (for deduplication)
+ * Extract key historical terms from text (for better duplicate detection)
  */
-function createContentHash(text) {
-  // Extract key phrases/terms from text (first 100 chars, normalized)
+function extractKeyHistoricalTerms(text) {
   const normalized = text.toLowerCase()
     .replace(/[^\w\s]/g, ' ') // Remove punctuation
     .replace(/\s+/g, ' ') // Normalize whitespace
-    .trim()
-    .slice(0, 100);
+    .trim();
   
-  // Extract important terms (words longer than 4 chars, excluding common words)
-  const words = normalized.split(' ').filter(w => 
-    w.length > 4 && 
-    !['that', 'this', 'with', 'from', 'about', 'which', 'their', 'there', 'would', 'could'].includes(w)
-  );
+  // Extract important historical terms (proper nouns, years, key events)
+  const words = normalized.split(' ').filter(w => {
+    const clean = w.replace(/[^\w]/g, '');
+    // Keep: years (4 digits), capitalized words (likely proper nouns), important historical terms
+    return (clean.length > 3 && /^[A-Z]/.test(w)) || // Proper nouns
+           /^\d{4}$/.test(clean) || // Years
+           (clean.length > 4 && !['that', 'this', 'with', 'from', 'about', 'which', 'their', 'there', 'would', 'could', 'peace', 'treaty', 'war', 'world', 'history', 'historical'].includes(clean));
+  });
   
-  // Return hash based on key terms
-  return words.slice(0, 5).join('-').substring(0, 50);
+  return words;
 }
 
 /**
- * Check if similar content was posted recently (within last 7 days)
+ * Create content hash from text (for deduplication)
+ * Now includes key historical terms for better matching
  */
-export async function isContentDuplicate(text, daysToCheck = 7) {
+function createContentHash(text) {
+  const keyTerms = extractKeyHistoricalTerms(text);
+  
+  // Create hash from key terms (up to 8 terms for better matching)
+  const hash = keyTerms.slice(0, 8).join('-').substring(0, 80);
+  
+  return hash || text.toLowerCase().slice(0, 50).replace(/[^\w]/g, '-');
+}
+
+/**
+ * Check if similar content was posted recently (within last 30 days - STRICTER)
+ * Now checks for same historical events/topics, not just similar text
+ */
+export async function isContentDuplicate(text, daysToCheck = 30) {
   const content = await loadJSON(POSTED_CONTENT_FILE);
   const contentHash = createContentHash(text);
   const cutoffTime = Date.now() - (daysToCheck * 24 * 60 * 60 * 1000);
   
+  // Extract key historical terms from current text
+  const currentKeyTerms = extractKeyHistoricalTerms(text);
+  const currentTermsSet = new Set(currentKeyTerms.map(t => t.toLowerCase()));
+  
   // Check if same hash exists and was posted recently
   for (const [hash, data] of Object.entries(content)) {
+    const postedTime = new Date(data.timestamp).getTime();
+    if (postedTime <= cutoffTime) continue; // Skip old posts
+    
+    // Check hash similarity
     if (hash === contentHash || hash.includes(contentHash) || contentHash.includes(hash)) {
-      const postedTime = new Date(data.timestamp).getTime();
-      if (postedTime > cutoffTime) {
-        // Also check if the actual text is very similar (80% match)
-        const similarity = calculateSimilarity(text.toLowerCase(), data.text?.toLowerCase() || '');
-        if (similarity > 0.8) {
+      // Also check if the actual text is very similar (70% match - stricter)
+      const similarity = calculateSimilarity(text.toLowerCase(), data.text?.toLowerCase() || '');
+      if (similarity > 0.7) {
+        console.log(`[Database] Duplicate detected: Hash match (${similarity.toFixed(2)} similarity)`);
+        return true;
+      }
+    }
+    
+    // Check if same historical event/topic (even if wording is different)
+    if (data.text) {
+      const previousKeyTerms = extractKeyHistoricalTerms(data.text);
+      const previousTermsSet = new Set(previousKeyTerms.map(t => t.toLowerCase()));
+      
+      // Count matching key terms
+      const matchingTerms = [...currentTermsSet].filter(term => previousTermsSet.has(term));
+      const totalUniqueTerms = new Set([...currentTermsSet, ...previousTermsSet]).size;
+      
+      // If 60%+ of key terms match, it's likely the same event/topic
+      if (matchingTerms.length >= 3 && matchingTerms.length / totalUniqueTerms > 0.6) {
+        console.log(`[Database] Duplicate detected: Same historical event (${matchingTerms.length} matching terms: ${matchingTerms.join(', ')})`);
+        return true;
+      }
+      
+      // Check for same year + same key event terms
+      const currentYear = text.match(/\b(1[0-9]{3}|20[0-2][0-9])\b/)?.[1];
+      const previousYear = data.text.match(/\b(1[0-9]{3}|20[0-2][0-9])\b/)?.[1];
+      
+      if (currentYear && previousYear && currentYear === previousYear) {
+        // Same year - check if key event terms match
+        const eventTerms = ['treaty', 'battle', 'war', 'revolution', 'assassination', 'declaration', 'landing', 'attack'];
+        const currentEventTerms = eventTerms.filter(term => text.toLowerCase().includes(term));
+        const previousEventTerms = eventTerms.filter(term => data.text.toLowerCase().includes(term));
+        
+        if (currentEventTerms.length > 0 && 
+            previousEventTerms.length > 0 && 
+            currentEventTerms.some(term => previousEventTerms.includes(term)) &&
+            matchingTerms.length >= 2) {
+          console.log(`[Database] Duplicate detected: Same year (${currentYear}) + same event type`);
           return true;
         }
       }
@@ -200,11 +255,27 @@ export async function isContentDuplicate(text, daysToCheck = 7) {
 }
 
 /**
- * Calculate text similarity (simple word overlap)
+ * Calculate text similarity (improved - focuses on meaningful words)
  */
 function calculateSimilarity(text1, text2) {
-  const words1 = new Set(text1.split(/\s+/).filter(w => w.length > 3));
-  const words2 = new Set(text2.split(/\s+/).filter(w => w.length > 3));
+  // Remove common words and focus on meaningful terms
+  const commonWords = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'this', 'that', 'these', 'those', 'was', 'were', 'is', 'are', 'had', 'have', 'has', 'did', 'does', 'do', 'will', 'would', 'could', 'should', 'may', 'might', 'can', 'must', 'peace', 'treaty', 'war', 'world', 'history', 'historical']);
+  
+  const words1 = new Set(
+    text1.split(/\s+/)
+      .map(w => w.toLowerCase().replace(/[^\w]/g, ''))
+      .filter(w => w.length > 3 && !commonWords.has(w))
+  );
+  
+  const words2 = new Set(
+    text2.split(/\s+/)
+      .map(w => w.toLowerCase().replace(/[^\w]/g, ''))
+      .filter(w => w.length > 3 && !commonWords.has(w))
+  );
+  
+  if (words1.size === 0 || words2.size === 0) {
+    return 0;
+  }
   
   const intersection = new Set([...words1].filter(x => words2.has(x)));
   const union = new Set([...words1, ...words2]);
@@ -256,12 +327,12 @@ export async function cleanOldData() {
   }
   await saveJSON(POLLS_FILE, cleanedPolls);
 
-  // Clean posted content (keep last 7 days)
+  // Clean posted content (keep last 30 days - longer for better duplicate detection)
   const postedContent = await loadJSON(POSTED_CONTENT_FILE);
   const cleanedContent = {};
   for (const [hash, data] of Object.entries(postedContent)) {
     const postedTime = new Date(data.timestamp).getTime();
-    if (postedTime > (Date.now() - (7 * 24 * 60 * 60 * 1000))) {
+    if (postedTime > (Date.now() - (30 * 24 * 60 * 60 * 1000))) {
       cleanedContent[hash] = data;
     }
   }

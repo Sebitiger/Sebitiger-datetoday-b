@@ -19,8 +19,8 @@ export async function postEveningFact() {
         continue;
       }
       
-      // Check if similar content was posted recently
-      const isDuplicate = await isContentDuplicate(fact, 7); // Check last 7 days
+      // Check if similar content was posted recently (30 days - stricter)
+      const isDuplicate = await isContentDuplicate(fact, 30); // Check last 30 days
       if (!isDuplicate) {
         break; // Found unique content
       }
