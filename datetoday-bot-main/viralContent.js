@@ -5,7 +5,7 @@ import { openai, SYSTEM_PROMPT } from "./openaiCommon.js";
 import { withTimeout, retryWithBackoff, cleanAIContent } from "./utils.js";
 import { postTweet, postThread, postTweetWithImage } from "./twitterClient.js";
 import { fetchImageForText, fetchEventImage } from "./fetchImage.js";
-import { isContentDuplicate, markContentPosted } from "./database.js";
+import { isContentDuplicate, markContentPosted, isImageDuplicate } from "./database.js";
 
 const OPENAI_TIMEOUT = 60000; // 60 seconds for longer content
 
@@ -231,8 +231,8 @@ export async function postHiddenConnection() {
         continue;
       }
       
-      // Check if similar content was posted recently (30 days - stricter)
-      const isDuplicate = await isContentDuplicate(tweet, 30); // Check last 30 days
+      // Check if similar content was posted recently (60 days - very strict for facts)
+      const isDuplicate = await isContentDuplicate(tweet, 60); // Check last 60 days
       if (!isDuplicate) {
         break; // Found unique content
       }
@@ -245,41 +245,87 @@ export async function postHiddenConnection() {
       throw new Error("Failed to generate unique hidden connection after multiple attempts");
     }
 
-    // Fetch an image based on the tweet content (REQUIRED - retry until found)
+    // Fetch an image based on the tweet content (REQUIRED - retry until found, check for duplicates)
     let imageBuffer = null;
     let imageAttempts = 0;
-    const maxImageAttempts = 3;
+    const maxImageAttempts = 10; // Increased to find unique image
+    let tweetAttempts = 0;
+    const maxTweetAttempts = 5; // Try different tweets if images are duplicates
     
-    while (!imageBuffer && imageAttempts < maxImageAttempts) {
-      try {
-        console.log(`[Viral] Attempting to fetch image for hidden connection (attempt ${imageAttempts + 1}/${maxImageAttempts})...`);
-        imageBuffer = await fetchImageForText(tweet, true); // requireImage = true
-        if (imageBuffer) {
-          console.log("[Viral] Image fetched successfully for hidden connection.");
-          break;
-        } else {
-          console.warn(`[Viral] No image found on attempt ${imageAttempts + 1}, retrying...`);
+    while (!imageBuffer && tweetAttempts < maxTweetAttempts) {
+      imageAttempts = 0;
+      
+      while (!imageBuffer && imageAttempts < maxImageAttempts) {
+        try {
+          console.log(`[Viral] Attempting to fetch image for hidden connection (attempt ${imageAttempts + 1}/${maxImageAttempts})...`);
+          const fetchedImage = await fetchImageForText(tweet, true); // requireImage = true
+          
+          if (fetchedImage) {
+            // Check if image was already posted
+            const isImageDup = await isImageDuplicate(fetchedImage, 60);
+            if (isImageDup) {
+              console.warn(`[Viral] Image is duplicate, trying different tweet...`);
+              // Generate new tweet and try again
+              tweet = await generateHiddenConnection();
+              const isTweetDup = await isContentDuplicate(tweet, 60);
+              if (isTweetDup || !tweet) {
+                tweetAttempts++;
+                continue;
+              }
+              imageAttempts = 0; // Reset for new tweet
+              continue;
+            }
+            
+            imageBuffer = fetchedImage;
+            console.log("[Viral] Image fetched successfully and verified as unique.");
+            break;
+          } else {
+            console.warn(`[Viral] No image found on attempt ${imageAttempts + 1}, retrying...`);
+            imageAttempts++;
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        } catch (imgErr) {
+          console.error(`[Viral] Image fetch error (attempt ${imageAttempts + 1}):`, imgErr.message || imgErr);
           imageAttempts++;
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          if (imageAttempts < maxImageAttempts) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
         }
-      } catch (imgErr) {
-        console.error(`[Viral] Image fetch error (attempt ${imageAttempts + 1}):`, imgErr.message || imgErr);
-        imageAttempts++;
-        if (imageAttempts < maxImageAttempts) {
-          await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+      
+      if (!imageBuffer && tweetAttempts < maxTweetAttempts - 1) {
+        console.warn(`[Viral] Could not find unique image, trying different tweet...`);
+        tweetAttempts++;
+        tweet = await generateHiddenConnection();
+        const isTweetDup = await isContentDuplicate(tweet, 60);
+        if (isTweetDup || !tweet) {
+          continue;
         }
+      } else {
+        break;
       }
     }
     
     if (!imageBuffer) {
-      console.error("[Viral] CRITICAL: Could not fetch image for hidden connection. Posting will fail.");
-      throw new Error("Failed to fetch required image for hidden connection");
+      console.error("[Viral] CRITICAL: Could not fetch unique image for hidden connection. Posting will fail.");
+      throw new Error("Failed to fetch required unique image for hidden connection");
+    }
+
+    // Final check: verify content and image are unique before posting
+    const finalDuplicateCheck = await isContentDuplicate(tweet, 60);
+    if (finalDuplicateCheck) {
+      throw new Error("Content became duplicate during image fetching - aborting post");
+    }
+    
+    const isImageDup = await isImageDuplicate(imageBuffer, 60);
+    if (isImageDup) {
+      throw new Error("Image is duplicate - aborting post");
     }
 
     const tweetId = await postTweetWithImage(tweet, imageBuffer, null);
     
-    // Mark content as posted to prevent duplicates
-    await markContentPosted(tweet, tweetId);
+    // Mark content AND image as posted to prevent duplicates
+    await markContentPosted(tweet, tweetId, imageBuffer);
     
     console.log("[Viral] Hidden connection posted successfully");
   } catch (err) {
@@ -394,8 +440,8 @@ export async function postQuickFact() {
         continue;
       }
       
-      // Check if similar content was posted recently (30 days - stricter)
-      const isDuplicate = await isContentDuplicate(tweet, 30); // Check last 30 days
+      // Check if similar content was posted recently (60 days - very strict for facts)
+      const isDuplicate = await isContentDuplicate(tweet, 60); // Check last 60 days
       if (!isDuplicate) {
         break; // Found unique content
       }
@@ -408,41 +454,82 @@ export async function postQuickFact() {
       throw new Error("Failed to generate unique quick fact after multiple attempts");
     }
 
-    // Fetch an image based on the tweet content (REQUIRED - retry until found)
+    // Fetch an image based on the tweet content (REQUIRED - retry until found, check for duplicates)
     let imageBuffer = null;
     let imageAttempts = 0;
-    const maxImageAttempts = 3;
+    const maxImageAttempts = 10; // Increased to find unique image
+    let tweetAttempts = 0;
+    const maxTweetAttempts = 5; // Try different tweets if images are duplicates
     
-    while (!imageBuffer && imageAttempts < maxImageAttempts) {
-      try {
-        console.log(`[Viral] Attempting to fetch image for quick fact (attempt ${imageAttempts + 1}/${maxImageAttempts})...`);
-        imageBuffer = await fetchImageForText(tweet, true); // requireImage = true
-        if (imageBuffer) {
-          console.log("[Viral] Image fetched successfully for quick fact.");
-          break;
-        } else {
-          console.warn(`[Viral] No image found on attempt ${imageAttempts + 1}, retrying...`);
+    while (!imageBuffer && tweetAttempts < maxTweetAttempts) {
+      imageAttempts = 0;
+      
+      while (!imageBuffer && imageAttempts < maxImageAttempts) {
+        try {
+          console.log(`[Viral] Attempting to fetch image for quick fact (attempt ${imageAttempts + 1}/${maxImageAttempts})...`);
+          const fetchedImage = await fetchImageForText(tweet, true); // requireImage = true
+          
+          if (fetchedImage) {
+            // Check if image was already posted
+            const isImageDup = await isImageDuplicate(fetchedImage, 60);
+            if (isImageDup) {
+              console.warn(`[Viral] Image is duplicate, trying different tweet...`);
+              // Generate new tweet and try again
+              tweet = await generateQuickFact();
+              const isTweetDup = await isContentDuplicate(tweet, 60);
+              if (isTweetDup) {
+                tweetAttempts++;
+                continue;
+              }
+              imageAttempts = 0; // Reset for new tweet
+              continue;
+            }
+            
+            imageBuffer = fetchedImage;
+            console.log("[Viral] Image fetched successfully and verified as unique.");
+            break;
+          } else {
+            console.warn(`[Viral] No image found on attempt ${imageAttempts + 1}, retrying...`);
+            imageAttempts++;
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        } catch (imgErr) {
+          console.error(`[Viral] Image fetch error (attempt ${imageAttempts + 1}):`, imgErr.message || imgErr);
           imageAttempts++;
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          if (imageAttempts < maxImageAttempts) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
         }
-      } catch (imgErr) {
-        console.error(`[Viral] Image fetch error (attempt ${imageAttempts + 1}):`, imgErr.message || imgErr);
-        imageAttempts++;
-        if (imageAttempts < maxImageAttempts) {
-          await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+      
+      if (!imageBuffer && tweetAttempts < maxTweetAttempts - 1) {
+        console.warn(`[Viral] Could not find unique image, trying different tweet...`);
+        tweetAttempts++;
+        tweet = await generateQuickFact();
+        const isTweetDup = await isContentDuplicate(tweet, 60);
+        if (isTweetDup) {
+          continue;
         }
+      } else {
+        break;
       }
     }
     
     if (!imageBuffer) {
-      console.error("[Viral] CRITICAL: Could not fetch image for quick fact. Posting will fail.");
-      throw new Error("Failed to fetch required image for quick fact");
+      console.error("[Viral] CRITICAL: Could not fetch unique image for quick fact. Posting will fail.");
+      throw new Error("Failed to fetch required unique image for quick fact");
+    }
+
+    // Final check: verify content is still unique before posting
+    const finalDuplicateCheck = await isContentDuplicate(tweet, 60);
+    if (finalDuplicateCheck) {
+      throw new Error("Content became duplicate during image fetching - aborting post");
     }
 
     const tweetId = await postTweetWithImage(tweet, imageBuffer, null);
     
-    // Mark content as posted to prevent duplicates
-    await markContentPosted(tweet, tweetId);
+    // Mark content AND image as posted to prevent duplicates
+    await markContentPosted(tweet, tweetId, imageBuffer);
     
     console.log("[Viral] Quick fact posted successfully");
   } catch (err) {
@@ -554,8 +641,8 @@ export async function postHistoryDebunk() {
         continue;
       }
       
-      // Check if similar content was posted recently (30 days - stricter)
-      const isDuplicate = await isContentDuplicate(tweet, 30); // Check last 30 days
+      // Check if similar content was posted recently (60 days - very strict for facts)
+      const isDuplicate = await isContentDuplicate(tweet, 60); // Check last 60 days
       if (!isDuplicate) {
         break; // Found unique content
       }
@@ -568,41 +655,87 @@ export async function postHistoryDebunk() {
       throw new Error("Failed to generate unique history debunk after multiple attempts");
     }
 
-    // Fetch an image based on the tweet content (REQUIRED - retry until found)
+    // Fetch an image based on the tweet content (REQUIRED - retry until found, check for duplicates)
     let imageBuffer = null;
     let imageAttempts = 0;
-    const maxImageAttempts = 3;
+    const maxImageAttempts = 10; // Increased to find unique image
+    let tweetAttempts = 0;
+    const maxTweetAttempts = 5; // Try different tweets if images are duplicates
     
-    while (!imageBuffer && imageAttempts < maxImageAttempts) {
-      try {
-        console.log(`[Viral] Attempting to fetch image for history debunk (attempt ${imageAttempts + 1}/${maxImageAttempts})...`);
-        imageBuffer = await fetchImageForText(tweet, true); // requireImage = true
-        if (imageBuffer) {
-          console.log("[Viral] Image fetched successfully for history debunk.");
-          break;
-        } else {
-          console.warn(`[Viral] No image found on attempt ${imageAttempts + 1}, retrying...`);
+    while (!imageBuffer && tweetAttempts < maxTweetAttempts) {
+      imageAttempts = 0;
+      
+      while (!imageBuffer && imageAttempts < maxImageAttempts) {
+        try {
+          console.log(`[Viral] Attempting to fetch image for history debunk (attempt ${imageAttempts + 1}/${maxImageAttempts})...`);
+          const fetchedImage = await fetchImageForText(tweet, true); // requireImage = true
+          
+          if (fetchedImage) {
+            // Check if image was already posted
+            const isImageDup = await isImageDuplicate(fetchedImage, 60);
+            if (isImageDup) {
+              console.warn(`[Viral] Image is duplicate, trying different tweet...`);
+              // Generate new tweet and try again
+              tweet = await generateHistoryDebunk();
+              const isTweetDup = await isContentDuplicate(tweet, 60);
+              if (isTweetDup || !tweet) {
+                tweetAttempts++;
+                continue;
+              }
+              imageAttempts = 0; // Reset for new tweet
+              continue;
+            }
+            
+            imageBuffer = fetchedImage;
+            console.log("[Viral] Image fetched successfully and verified as unique.");
+            break;
+          } else {
+            console.warn(`[Viral] No image found on attempt ${imageAttempts + 1}, retrying...`);
+            imageAttempts++;
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        } catch (imgErr) {
+          console.error(`[Viral] Image fetch error (attempt ${imageAttempts + 1}):`, imgErr.message || imgErr);
           imageAttempts++;
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          if (imageAttempts < maxImageAttempts) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
         }
-      } catch (imgErr) {
-        console.error(`[Viral] Image fetch error (attempt ${imageAttempts + 1}):`, imgErr.message || imgErr);
-        imageAttempts++;
-        if (imageAttempts < maxImageAttempts) {
-          await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+      
+      if (!imageBuffer && tweetAttempts < maxTweetAttempts - 1) {
+        console.warn(`[Viral] Could not find unique image, trying different tweet...`);
+        tweetAttempts++;
+        tweet = await generateHistoryDebunk();
+        const isTweetDup = await isContentDuplicate(tweet, 60);
+        if (isTweetDup || !tweet) {
+          continue;
         }
+      } else {
+        break;
       }
     }
     
     if (!imageBuffer) {
-      console.error("[Viral] CRITICAL: Could not fetch image for history debunk. Posting will fail.");
-      throw new Error("Failed to fetch required image for history debunk");
+      console.error("[Viral] CRITICAL: Could not fetch unique image for history debunk. Posting will fail.");
+      throw new Error("Failed to fetch required unique image for history debunk");
+    }
+
+    // Final check: verify content and image are unique before posting
+    const finalDuplicateCheck = await isContentDuplicate(tweet, 60);
+    if (finalDuplicateCheck) {
+      throw new Error("Content became duplicate during image fetching - aborting post");
+    }
+    
+    const isImageDup = await isImageDuplicate(imageBuffer, 60);
+    if (isImageDup) {
+      throw new Error("Image is duplicate - aborting post");
     }
 
     const tweetId = await postTweetWithImage(tweet, imageBuffer, null);
     
-    // Mark content as posted to prevent duplicates
-    await markContentPosted(tweet, tweetId);
+    // Mark content AND image as posted to prevent duplicates
+    await markContentPosted(tweet, tweetId, imageBuffer);
     
     console.log("[Viral] History debunk posted successfully");
   } catch (err) {

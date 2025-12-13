@@ -5,7 +5,7 @@ import { generateMainTweet } from "./generateTweet.js";
 import { generateReply } from "./generateReply.js";
 import { fetchEventImage } from "./fetchImage.js";
 import { postTweet, postTweetWithImage } from "./twitterClient.js";
-import { isEventPosted, markEventPosted, createEventId } from "./database.js";
+import { isEventPosted, markEventPosted, createEventId, isImageDuplicate, markContentPosted } from "./database.js";
 import { isEventAppropriate } from "./moderation.js";
 import { trackPost } from "./analytics.js";
 import { info, error, logTweetPost } from "./logger.js";
@@ -147,6 +147,13 @@ export async function postDailyTweet() {
     
     info("[Daily] Image confirmed valid", { sizeKB: (imageBuffer.length / 1024).toFixed(2) });
 
+    // Check if image was already posted (prevent duplicate images)
+    const isImageDup = await isImageDuplicate(imageBuffer, 60);
+    if (isImageDup) {
+      error("[Daily] Image is duplicate - aborting post to prevent repetition");
+      throw new Error("Image was already posted recently - aborting to prevent duplicate");
+    }
+
     // 4. Post main tweet (WITH IMAGE - required)
     let mainTweetId;
     try {
@@ -168,6 +175,9 @@ export async function postDailyTweet() {
 
       // Mark event as posted
       await markEventPosted(eventId, mainTweetId);
+      
+      // Mark content AND image as posted to prevent duplicates
+      await markContentPosted(mainTweetText, mainTweetId, imageBuffer);
     } catch (postErr) {
       logTweetPost("daily", null, false, postErr);
       throw postErr;

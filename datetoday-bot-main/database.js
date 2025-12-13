@@ -5,6 +5,7 @@
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
+import crypto from "crypto";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,6 +13,7 @@ const __dirname = path.dirname(__filename);
 const DATA_DIR = path.join(__dirname, "data");
 const POSTED_EVENTS_FILE = path.join(DATA_DIR, "posted-events.json");
 const POSTED_CONTENT_FILE = path.join(DATA_DIR, "posted-content.json");
+const POSTED_IMAGES_FILE = path.join(DATA_DIR, "posted-images.json");
 const INTERACTIONS_FILE = path.join(DATA_DIR, "interactions.json");
 const POLLS_FILE = path.join(DATA_DIR, "polls.json");
 
@@ -188,65 +190,119 @@ function createContentHash(text) {
 }
 
 /**
- * Check if similar content was posted recently (within last 30 days - STRICTER)
+ * Check if similar content was posted recently (within last 60 days - VERY STRICT)
  * Now checks for same historical events/topics, not just similar text
+ * EXTRA STRICT for "Did you know" facts
  */
-export async function isContentDuplicate(text, daysToCheck = 30) {
+export async function isContentDuplicate(text, daysToCheck = 60) {
   const content = await loadJSON(POSTED_CONTENT_FILE);
   const contentHash = createContentHash(text);
   const cutoffTime = Date.now() - (daysToCheck * 24 * 60 * 60 * 1000);
   
+  // Check if this is a "Did you know" style fact (needs extra strict checking)
+  const isDidYouKnow = /^(did you know|fun fact|here's|this is|in \d{4})/i.test(text.trim());
+  const strictThreshold = 0.0; // ZERO tolerance - any similarity = duplicate
+  const minMatchingTerms = isDidYouKnow ? 1 : 2; // Very low threshold - even 1 matching term can be duplicate
+  
   // Extract key historical terms from current text
   const currentKeyTerms = extractKeyHistoricalTerms(text);
   const currentTermsSet = new Set(currentKeyTerms.map(t => t.toLowerCase()));
+  
+  // Remove "did you know" and similar phrases for better matching
+  const normalizedText = text.toLowerCase()
+    .replace(/^(did you know|fun fact|here's|this is|in \d{4})/i, '')
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
   
   // Check if same hash exists and was posted recently
   for (const [hash, data] of Object.entries(content)) {
     const postedTime = new Date(data.timestamp).getTime();
     if (postedTime <= cutoffTime) continue; // Skip old posts
     
-    // Check hash similarity
+    if (!data.text) continue;
+    
+    // Normalize previous text too
+    const normalizedPrevious = data.text.toLowerCase()
+      .replace(/^(did you know|fun fact|here's|this is|in \d{4})/i, '')
+      .replace(/[^\w\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    
+    // Check hash similarity - ZERO tolerance
     if (hash === contentHash || hash.includes(contentHash) || contentHash.includes(hash)) {
-      // Also check if the actual text is very similar (70% match - stricter)
-      const similarity = calculateSimilarity(text.toLowerCase(), data.text?.toLowerCase() || '');
-      if (similarity > 0.7) {
-        console.log(`[Database] Duplicate detected: Hash match (${similarity.toFixed(2)} similarity)`);
+      // Any hash match = duplicate (even if text is slightly different)
+      console.log(`[Database] Duplicate detected: Hash match (hash: ${hash.substring(0, 30)}...)`);
+      return true;
+    }
+    
+    // Also check if the actual text has ANY similarity (ZERO tolerance)
+    const similarity = calculateSimilarity(normalizedText, normalizedPrevious);
+    if (similarity > 0.0) {
+      // If there's any word overlap, check if key terms match
+      if (matchingTerms.length >= 1) {
+        console.log(`[Database] Duplicate detected: Text similarity (${similarity.toFixed(2)} similarity, ${matchingTerms.length} matching terms)`);
         return true;
       }
     }
     
     // Check if same historical event/topic (even if wording is different)
-    if (data.text) {
-      const previousKeyTerms = extractKeyHistoricalTerms(data.text);
-      const previousTermsSet = new Set(previousKeyTerms.map(t => t.toLowerCase()));
+    const previousKeyTerms = extractKeyHistoricalTerms(data.text);
+    const previousTermsSet = new Set(previousKeyTerms.map(t => t.toLowerCase()));
+    
+    // Count matching key terms
+    const matchingTerms = [...currentTermsSet].filter(term => previousTermsSet.has(term));
+    const totalUniqueTerms = new Set([...currentTermsSet, ...previousTermsSet]).size;
+    
+    // If enough key terms match, it's likely the same event/topic
+    // ZERO tolerance - even small overlap = duplicate
+    const termMatchRatio = totalUniqueTerms > 0 ? matchingTerms.length / totalUniqueTerms : 0;
+    const termThreshold = 0.0; // ZERO tolerance - any matching terms = potential duplicate
+    
+    // If we have matching key terms (especially proper nouns, years, or event names), it's a duplicate
+    if (matchingTerms.length >= minMatchingTerms) {
+      console.log(`[Database] Duplicate detected: Same historical event (${matchingTerms.length} matching terms: ${matchingTerms.join(', ')}, ratio: ${termMatchRatio.toFixed(2)})`);
+      return true;
+    }
+    
+    // Check for same year + same key event terms
+    const currentYear = text.match(/\b(1[0-9]{3}|20[0-2][0-9])\b/)?.[1];
+    const previousYear = data.text.match(/\b(1[0-9]{3}|20[0-2][0-9])\b/)?.[1];
+    
+    if (currentYear && previousYear && currentYear === previousYear) {
+      // Same year - check if key event terms match
+      const eventTerms = ['treaty', 'battle', 'war', 'revolution', 'assassination', 'declaration', 'landing', 'attack', 'versailles', 'hitler', 'germany', 'france', 'britain'];
+      const currentEventTerms = eventTerms.filter(term => text.toLowerCase().includes(term));
+      const previousEventTerms = eventTerms.filter(term => data.text.toLowerCase().includes(term));
       
-      // Count matching key terms
-      const matchingTerms = [...currentTermsSet].filter(term => previousTermsSet.has(term));
-      const totalUniqueTerms = new Set([...currentTermsSet, ...previousTermsSet]).size;
-      
-      // If 60%+ of key terms match, it's likely the same event/topic
-      if (matchingTerms.length >= 3 && matchingTerms.length / totalUniqueTerms > 0.6) {
-        console.log(`[Database] Duplicate detected: Same historical event (${matchingTerms.length} matching terms: ${matchingTerms.join(', ')})`);
-        return true;
-      }
-      
-      // Check for same year + same key event terms
-      const currentYear = text.match(/\b(1[0-9]{3}|20[0-2][0-9])\b/)?.[1];
-      const previousYear = data.text.match(/\b(1[0-9]{3}|20[0-2][0-9])\b/)?.[1];
-      
-      if (currentYear && previousYear && currentYear === previousYear) {
-        // Same year - check if key event terms match
-        const eventTerms = ['treaty', 'battle', 'war', 'revolution', 'assassination', 'declaration', 'landing', 'attack'];
-        const currentEventTerms = eventTerms.filter(term => text.toLowerCase().includes(term));
-        const previousEventTerms = eventTerms.filter(term => data.text.toLowerCase().includes(term));
-        
+        // ZERO tolerance - same year + any matching event term = duplicate
         if (currentEventTerms.length > 0 && 
             previousEventTerms.length > 0 && 
-            currentEventTerms.some(term => previousEventTerms.includes(term)) &&
-            matchingTerms.length >= 2) {
-          console.log(`[Database] Duplicate detected: Same year (${currentYear}) + same event type`);
+            currentEventTerms.some(term => previousEventTerms.includes(term))) {
+          console.log(`[Database] Duplicate detected: Same year (${currentYear}) + same event type (${currentEventTerms.join(', ')})`);
           return true;
         }
+    }
+    
+    // EXTRA STRICT: For "Did you know" facts, check if they're about the same topic
+    // even with different wording (e.g., "Treaty of Versailles" vs "Versailles Treaty")
+    if (isDidYouKnow) {
+      // Extract main topic (remove common fact phrases)
+      const currentTopic = normalizedText.split(' ').filter(w => 
+        w.length > 4 && 
+        !['that', 'this', 'with', 'from', 'about', 'which', 'their', 'there', 'would', 'could', 'peace', 'treaty', 'war', 'world', 'history', 'historical', 'imposed', 'harsh', 'penalties', 'reparations', 'contributed', 'sparked', 'conflict', 'lesson'].includes(w)
+      ).slice(0, 5).join(' ');
+      
+      const previousTopic = normalizedPrevious.split(' ').filter(w => 
+        w.length > 4 && 
+        !['that', 'this', 'with', 'from', 'about', 'which', 'their', 'there', 'would', 'could', 'peace', 'treaty', 'war', 'world', 'history', 'historical', 'imposed', 'harsh', 'penalties', 'reparations', 'contributed', 'sparked', 'conflict', 'lesson'].includes(w)
+      ).slice(0, 5).join(' ');
+      
+      // ZERO tolerance - any topic similarity = duplicate
+      const topicSimilarity = calculateSimilarity(currentTopic, previousTopic);
+      if (topicSimilarity > 0.0 && matchingTerms.length >= 1) {
+        console.log(`[Database] Duplicate detected: "Did you know" fact about same topic (${topicSimilarity.toFixed(2)} topic similarity, ${matchingTerms.length} matching terms)`);
+        return true;
       }
     }
   }
@@ -284,9 +340,69 @@ function calculateSimilarity(text1, text2) {
 }
 
 /**
+ * Create image hash from image buffer (for duplicate detection)
+ */
+function createImageHash(imageBuffer) {
+  if (!imageBuffer || !Buffer.isBuffer(imageBuffer)) {
+    return null;
+  }
+  // Create hash from first 10KB of image (enough to detect duplicates)
+  const sample = imageBuffer.slice(0, Math.min(10240, imageBuffer.length));
+  return crypto.createHash('md5').update(sample).digest('hex');
+}
+
+/**
+ * Check if image was already posted recently
+ */
+export async function isImageDuplicate(imageBuffer, daysToCheck = 60) {
+  if (!imageBuffer || !Buffer.isBuffer(imageBuffer)) {
+    return false;
+  }
+  
+  const images = await loadJSON(POSTED_IMAGES_FILE);
+  const imageHash = createImageHash(imageBuffer);
+  
+  if (!imageHash) {
+    return false;
+  }
+  
+  const cutoffTime = Date.now() - (daysToCheck * 24 * 60 * 60 * 1000);
+  
+  if (images[imageHash]) {
+    const postedTime = new Date(images[imageHash].timestamp).getTime();
+    if (postedTime > cutoffTime) {
+      console.log(`[Database] Duplicate image detected (posted ${Math.round((Date.now() - postedTime) / (1000 * 60 * 60 * 24))} days ago)`);
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+/**
+ * Mark image as posted (for deduplication)
+ */
+export async function markImagePosted(imageBuffer, tweetId = null) {
+  if (!imageBuffer || !Buffer.isBuffer(imageBuffer)) {
+    return;
+  }
+  
+  const images = await loadJSON(POSTED_IMAGES_FILE);
+  const imageHash = createImageHash(imageBuffer);
+  
+  if (imageHash) {
+    images[imageHash] = {
+      tweetId,
+      timestamp: new Date().toISOString(),
+    };
+    await saveJSON(POSTED_IMAGES_FILE, images);
+  }
+}
+
+/**
  * Mark content as posted (for deduplication)
  */
-export async function markContentPosted(text, tweetId = null) {
+export async function markContentPosted(text, tweetId = null, imageBuffer = null) {
   const content = await loadJSON(POSTED_CONTENT_FILE);
   const contentHash = createContentHash(text);
   
@@ -297,6 +413,11 @@ export async function markContentPosted(text, tweetId = null) {
   };
   
   await saveJSON(POSTED_CONTENT_FILE, content);
+  
+  // Also mark image if provided
+  if (imageBuffer) {
+    await markImagePosted(imageBuffer, tweetId);
+  }
 }
 
 /**
@@ -327,16 +448,27 @@ export async function cleanOldData() {
   }
   await saveJSON(POLLS_FILE, cleanedPolls);
 
-  // Clean posted content (keep last 30 days - longer for better duplicate detection)
+  // Clean posted content (keep last 60 days - longer for better duplicate detection)
   const postedContent = await loadJSON(POSTED_CONTENT_FILE);
   const cleanedContent = {};
   for (const [hash, data] of Object.entries(postedContent)) {
     const postedTime = new Date(data.timestamp).getTime();
-    if (postedTime > (Date.now() - (30 * 24 * 60 * 60 * 1000))) {
+    if (postedTime > (Date.now() - (60 * 24 * 60 * 60 * 1000))) {
       cleanedContent[hash] = data;
     }
   }
   await saveJSON(POSTED_CONTENT_FILE, cleanedContent);
+
+  // Clean posted images (keep last 60 days)
+  const postedImages = await loadJSON(POSTED_IMAGES_FILE);
+  const cleanedImages = {};
+  for (const [hash, data] of Object.entries(postedImages)) {
+    const postedTime = new Date(data.timestamp).getTime();
+    if (postedTime > (Date.now() - (60 * 24 * 60 * 60 * 1000))) {
+      cleanedImages[hash] = data;
+    }
+  }
+  await saveJSON(POSTED_IMAGES_FILE, cleanedImages);
 
   console.log("[Database] Cleaned old data");
 }
