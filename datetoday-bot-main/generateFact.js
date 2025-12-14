@@ -8,13 +8,14 @@ const OPENAI_TIMEOUT = 30000; // 30 seconds
 Create one short, surprising fact about a MAJOR historical event or significant moment that makes the reader feel smarter and think "oh I forgot about that!"
 
 Focus on:
-- BIG MOMENTS in history - significant events, major turning points, important historical figures
+- SIGNIFICANT MOMENTS in history across diverse topics - major events, turning points, important figures
 - Events that MATTERED - things that shaped history, changed the world, had real impact
-- Educational value - teach people about important history
+- Educational value - teach people about important history (wars, science, culture, exploration, etc.)
 - The "recall" factor - make people remember significant moments they may have forgotten
 
 Requirements:
-- Focus on MAJOR historical events - big moments, significant turning points, important figures
+- Focus on SIGNIFICANT historical events - major moments, turning points, important figures
+- Include diverse topics: wars, science, culture, arts, exploration, social movements, etc.
 - max 250 characters (to ensure complete sentences)
 - no emojis, no hashtags
 - must be factually correct (widely documented in history)

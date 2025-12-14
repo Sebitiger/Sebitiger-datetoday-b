@@ -5,7 +5,7 @@ import { generateMainTweet } from "./generateTweet.js";
 import { generateReply } from "./generateReply.js";
 import { fetchEventImage } from "./fetchImage.js";
 import { postTweet, postTweetWithImage } from "./twitterClient.js";
-import { isEventPosted, markEventPosted, createEventId, isImageDuplicate, markContentPosted } from "./database.js";
+import { isEventPosted, markEventPosted, createEventId, isImageDuplicate, markContentPosted, isContentDuplicate } from "./database.js";
 import { isEventAppropriate } from "./moderation.js";
 import { trackPost } from "./analytics.js";
 import { info, error, logTweetPost } from "./logger.js";
@@ -49,9 +49,36 @@ export async function postDailyTweet() {
       description: event.description?.slice(0, 120),
     });
 
-    // 2. Generate main tweet text
+    // 2. Generate main tweet text (with duplicate checking)
     let mainTweetText = await generateMainTweet(event);
-    info("[Daily] Main tweet text generated");
+    let tweetAttempts = 0;
+    const maxTweetAttempts = 10;
+    
+    // Check if generated tweet is duplicate, regenerate if needed
+    while (tweetAttempts < maxTweetAttempts) {
+      const isDuplicate = await isContentDuplicate(mainTweetText, 60);
+      if (!isDuplicate) {
+        break; // Found unique tweet
+      }
+      info(`[Daily] Generated tweet is duplicate, regenerating... (attempt ${tweetAttempts + 1})`);
+      // Try a different event if tweet is duplicate
+      event = await getRandomEvent();
+      eventId = createEventId(event);
+      const isEventPosted = await isEventPosted(eventId);
+      if (isEventPosted) {
+        tweetAttempts++;
+        continue;
+      }
+      mainTweetText = await generateMainTweet(event);
+      tweetAttempts++;
+    }
+    
+    if (tweetAttempts >= maxTweetAttempts) {
+      error("[Daily] Could not generate unique tweet after multiple attempts");
+      throw new Error("Failed to generate unique tweet");
+    }
+    
+    info("[Daily] Main tweet text generated and verified as unique");
 
     // 3. Fetch an image for the event (REQUIRED - try multiple events if needed)
     let imageBuffer = null;

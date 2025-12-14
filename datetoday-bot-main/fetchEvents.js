@@ -124,12 +124,12 @@ function scoreEventMajority(event) {
     console.log(`[Events] Iconic event detected: ${event.description?.slice(0, 60)}`);
   }
 
-  // Penalize broad/generic events heavily
+  // Penalize broad/generic events (but less harshly to allow more variety)
   if (isEventTooBroad(event)) {
-    score -= 50; // Heavy penalty
+    score -= 30; // Reduced from 50 to 30 - allow more diverse events
   }
 
-  // Major wars and conflicts (very high priority)
+  // Major wars and conflicts (high priority but not exclusive)
   if (desc.includes("world war") || desc.includes("civil war") || desc.includes("revolution")) {
     score += 50;
   }
@@ -139,16 +139,94 @@ function scoreEventMajority(event) {
   if (desc.includes("war") || desc.includes("invasion")) {
     score += 30;
   }
+  
+  // BROADER TOPICS: Science and technology (expanded)
+  if (desc.includes("discovered") || desc.includes("discovery")) {
+    score += 35; // Increased from 30 - scientific discoveries are important
+  }
+  if (desc.includes("invention") || desc.includes("invented")) {
+    score += 35; // Increased from 30 - inventions shape history
+  }
+  if (desc.includes("theory") || desc.includes("hypothesis")) {
+    score += 30; // Scientific theories
+  }
+  if (desc.includes("experiment") || desc.includes("breakthrough")) {
+    score += 30; // Scientific breakthroughs
+  }
+  if (desc.includes("medicine") || desc.includes("medical") || desc.includes("cure") || desc.includes("treatment")) {
+    score += 30; // Medical advances
+  }
+  if (desc.includes("technology") || desc.includes("technological")) {
+    score += 25; // Technology advances
+  }
+  
+  // BROADER TOPICS: Arts and culture (expanded)
+  if (desc.includes("published") && /[A-Z][a-z]+/.test(event.description)) {
+    score += 30; // Increased from 20 - important publications
+  }
+  if (desc.includes("premiered") || desc.includes("debut") || desc.includes("first performance")) {
+    score += 25; // Increased from 15 - cultural premieres
+  }
+  if (desc.includes("exhibition") || desc.includes("museum") || desc.includes("gallery")) {
+    score += 20; // Art exhibitions
+  }
+  if (desc.includes("composed") || desc.includes("symphony") || desc.includes("opera")) {
+    score += 25; // Musical compositions
+  }
+  if (desc.includes("painted") || desc.includes("sculpture") || desc.includes("artwork")) {
+    score += 25; // Artworks
+  }
+  if (desc.includes("literature") || desc.includes("novel") || desc.includes("poetry")) {
+    score += 25; // Literary works
+  }
+  
+  // BROADER TOPICS: Exploration and geography
+  if (desc.includes("expedition") || desc.includes("explorer") || desc.includes("explored")) {
+    score += 35; // Exploration
+  }
+  if (desc.includes("reached") || desc.includes("arrived") || desc.includes("crossed")) {
+    score += 25; // Geographic achievements
+  }
+  if (desc.includes("mountain") || desc.includes("peak") || desc.includes("summit")) {
+    score += 25; // Mountain climbing
+  }
+  if (desc.includes("pole") || desc.includes("antarctic") || desc.includes("arctic")) {
+    score += 30; // Polar exploration
+  }
+  
+  // BROADER TOPICS: Social and cultural movements
+  if (desc.includes("movement") || desc.includes("protest") || desc.includes("demonstration")) {
+    score += 30; // Social movements
+  }
+  if (desc.includes("rights") || desc.includes("freedom") || desc.includes("liberation")) {
+    score += 30; // Rights movements
+  }
+  if (desc.includes("festival") || desc.includes("celebration") || desc.includes("ceremony")) {
+    score += 20; // Cultural celebrations
+  }
+  
+  // BROADER TOPICS: Architecture and infrastructure
+  if (desc.includes("built") || desc.includes("construction") || desc.includes("completed")) {
+    score += 25; // Construction projects
+  }
+  if (desc.includes("opened") && /[A-Z][a-z]+/.test(event.description)) {
+    score += 30; // Increased from 25 - important openings
+  }
+  if (desc.includes("bridge") || desc.includes("tunnel") || desc.includes("canal")) {
+    score += 30; // Infrastructure
+  }
+  
+  // BROADER TOPICS: Sports and achievements (major events only)
+  if (desc.includes("olympic") || desc.includes("olympics")) {
+    score += 30; // Olympic games
+  }
+  if (desc.includes("championship") && /[A-Z][a-z]+/.test(event.description)) {
+    score += 20; // Major championships
+  }
 
   // Major discoveries and achievements with specific names
   if (desc.includes("moon landing") || desc.includes("apollo") || desc.includes("first man on the moon")) {
     score += 50;
-  }
-  if (desc.includes("discovered") && /[A-Z][a-z]+/.test(event.description)) {
-    score += 30; // Named discoveries
-  }
-  if (desc.includes("invention") && /[A-Z][a-z]+/.test(event.description)) {
-    score += 30; // Named inventions
   }
   if (desc.includes("first") && (desc.includes("flight") || desc.includes("space") || desc.includes("cross") || desc.includes("reach"))) {
     score += 35;
@@ -204,25 +282,9 @@ function scoreEventMajority(event) {
     }
   }
 
-  // Major cultural milestones with names
-  if (desc.includes("published") && /[A-Z][a-z]+/.test(event.description)) {
-    score += 20; // Named publications
-  }
-  if (desc.includes("premiered") && /[A-Z][a-z]+/.test(event.description)) {
-    score += 15; // Named premieres
-  }
-
   // Major scientific breakthroughs with names
-  if (desc.includes("theory") && /[A-Z][a-z]+/.test(event.description)) {
-    score += 25; // Named theories
-  }
   if (desc.includes("nobel prize") || desc.includes("nobel")) {
-    score += 35; // Increased
-  }
-
-  // Major infrastructure/achievements with names
-  if (desc.includes("opened") && /[A-Z][a-z]+/.test(event.description)) {
-    score += 25; // Named openings
+    score += 35; // Nobel prizes
   }
 
   // Bonus for specific details
@@ -233,12 +295,12 @@ function scoreEventMajority(event) {
     score += 10; // Has numbers
   }
 
-  // Penalize niche/local events
+  // Penalize niche/local events (but less harshly)
   if (desc.includes("local") || desc.includes("regional") || desc.includes("municipal")) {
-    score -= 30; // Increased penalty
+    score -= 20; // Reduced from 30 to 20
   }
   if (desc.includes("minor") || desc.includes("small") || desc.includes("unimportant")) {
-    score -= 25; // Increased penalty
+    score -= 15; // Reduced from 25 to 15
   }
 
   // Bonus for older events (pre-1900 are often more "historical")
@@ -327,11 +389,12 @@ function selectMajorEvent(events) {
   const veryMajorEvents = scoredEvents.filter(item => item.score >= 60);
   const majorEvents = scoredEvents.filter(item => item.score >= 50);
   
-  // Prefer iconic events (100+), then very major (60+), then major (50+), only fallback to 40+ if nothing else
+  // BROADER SELECTION: Allow more variety - prefer iconic (100+), but also include good events (30+)
+  // This ensures we get diverse topics, not just wars and battles
   const candidates = iconicEvents.length > 0 ? iconicEvents :
                      veryMajorEvents.length > 0 ? veryMajorEvents :
                      majorEvents.length > 0 ? majorEvents :
-                     scoredEvents.filter(item => item.score >= 40); // Only fallback to 40+ if no major events
+                     scoredEvents.filter(item => item.score >= 30); // Lowered from 40 to 30 for broader topics
   
   if (iconicEvents.length > 0) {
     console.log(`[Events] Found ${iconicEvents.length} iconic events - prioritizing these`);

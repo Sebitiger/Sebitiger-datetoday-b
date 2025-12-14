@@ -46,8 +46,16 @@ async function saveJSON(filePath, data) {
   try {
     await ensureDataDir();
     await fs.writeFile(filePath, JSON.stringify(data, null, 2), "utf-8");
+    // Verify the file was written successfully
+    const verify = await fs.readFile(filePath, "utf-8");
+    if (!verify || verify.length === 0) {
+      throw new Error(`File ${filePath} was not written correctly`);
+    }
   } catch (err) {
-    console.error(`[Database] Error saving ${filePath}:`, err.message);
+    console.error(`[Database] CRITICAL ERROR saving ${filePath}:`, err.message);
+    console.error(`[Database] Stack:`, err.stack);
+    // Re-throw to prevent silent failures
+    throw err;
   }
 }
 
@@ -159,21 +167,46 @@ export async function markPollAnswered(pollId) {
  * Extract key historical terms from text (for better duplicate detection)
  */
 function extractKeyHistoricalTerms(text) {
+  if (!text || typeof text !== 'string') {
+    return [];
+  }
+  
+  // Keep original text for proper noun detection
+  const originalWords = text.split(/\s+/);
   const normalized = text.toLowerCase()
     .replace(/[^\w\s]/g, ' ') // Remove punctuation
     .replace(/\s+/g, ' ') // Normalize whitespace
     .trim();
   
+  const normalizedWords = normalized.split(' ');
+  const terms = new Set();
+  
   // Extract important historical terms (proper nouns, years, key events)
-  const words = normalized.split(' ').filter(w => {
+  normalizedWords.forEach((w, index) => {
     const clean = w.replace(/[^\w]/g, '');
-    // Keep: years (4 digits), capitalized words (likely proper nouns), important historical terms
-    return (clean.length > 3 && /^[A-Z]/.test(w)) || // Proper nouns
-           /^\d{4}$/.test(clean) || // Years
-           (clean.length > 4 && !['that', 'this', 'with', 'from', 'about', 'which', 'their', 'there', 'would', 'could', 'peace', 'treaty', 'war', 'world', 'history', 'historical'].includes(clean));
+    if (clean.length < 3) return;
+    
+    // Check for years (4 digits)
+    if (/^\d{4}$/.test(clean)) {
+      terms.add(clean);
+      return;
+    }
+    
+    // Check for proper nouns (capitalized in original text)
+    const originalWord = originalWords[index];
+    if (originalWord && /^[A-Z]/.test(originalWord.replace(/[^\w]/g, ''))) {
+      terms.add(clean);
+      return;
+    }
+    
+    // Keep important historical terms (longer words, not common words)
+    const commonWords = ['that', 'this', 'with', 'from', 'about', 'which', 'their', 'there', 'would', 'could', 'peace', 'treaty', 'war', 'world', 'history', 'historical', 'know', 'did', 'you', 'fact', 'here', 'truth', 'actually', 'myth', 'same', 'year', 'when', 'where', 'what', 'who', 'how', 'why', 'then', 'than', 'them', 'they', 'these', 'those'];
+    if (clean.length > 4 && !commonWords.includes(clean)) {
+      terms.add(clean);
+    }
   });
   
-  return words;
+  return Array.from(terms);
 }
 
 /**
@@ -181,12 +214,27 @@ function extractKeyHistoricalTerms(text) {
  * Now includes key historical terms for better matching
  */
 function createContentHash(text) {
+  if (!text || typeof text !== 'string') {
+    return '';
+  }
+  
   const keyTerms = extractKeyHistoricalTerms(text);
   
-  // Create hash from key terms (up to 8 terms for better matching)
-  const hash = keyTerms.slice(0, 8).join('-').substring(0, 80);
+  // Create hash from key terms (up to 10 terms for better matching)
+  // Include years and proper nouns first (most important for uniqueness)
+  const years = keyTerms.filter(t => /^\d{4}$/.test(t));
+  const properNouns = keyTerms.filter(t => {
+    const originalWord = text.split(' ').find(w => w.toLowerCase().replace(/[^\w]/g, '') === t);
+    return originalWord && /^[A-Z]/.test(originalWord);
+  });
+  const otherTerms = keyTerms.filter(t => !years.includes(t) && !properNouns.includes(t));
   
-  return hash || text.toLowerCase().slice(0, 50).replace(/[^\w]/g, '-');
+  // Prioritize: years + proper nouns + other terms
+  const prioritizedTerms = [...years, ...properNouns, ...otherTerms].slice(0, 10);
+  const hash = prioritizedTerms.join('-').substring(0, 100);
+  
+  // Fallback: use normalized text if no key terms found
+  return hash || text.toLowerCase().slice(0, 80).replace(/[^\w]/g, '-');
 }
 
 /**
@@ -195,8 +243,19 @@ function createContentHash(text) {
  * EXTRA STRICT for "Did you know" facts
  */
 export async function isContentDuplicate(text, daysToCheck = 60) {
+  if (!text || typeof text !== 'string' || text.trim().length === 0) {
+    console.warn("[Database] Cannot check duplicate for empty text");
+    return false;
+  }
+  
   const content = await loadJSON(POSTED_CONTENT_FILE);
   const contentHash = createContentHash(text);
+  
+  if (!contentHash || contentHash.length === 0) {
+    console.warn("[Database] Could not create hash for text, skipping duplicate check");
+    return false;
+  }
+  
   const cutoffTime = Date.now() - (daysToCheck * 24 * 60 * 60 * 1000);
   
   // Check if this is a "Did you know" style fact (needs extra strict checking)
@@ -216,11 +275,18 @@ export async function isContentDuplicate(text, daysToCheck = 60) {
     .trim();
   
   // Check if same hash exists and was posted recently
+  if (Object.keys(content).length === 0) {
+    // No previous posts, definitely not a duplicate
+    return false;
+  }
+  
   for (const [hash, data] of Object.entries(content)) {
-    const postedTime = new Date(data.timestamp).getTime();
-    if (postedTime <= cutoffTime) continue; // Skip old posts
+    if (!hash || !data) continue;
     
-    if (!data.text) continue;
+    const postedTime = new Date(data.timestamp).getTime();
+    if (isNaN(postedTime) || postedTime <= cutoffTime) continue; // Skip old posts or invalid timestamps
+    
+    if (!data.text || typeof data.text !== 'string') continue;
     
     // Normalize previous text too
     const normalizedPrevious = data.text.toLowerCase()
@@ -228,6 +294,14 @@ export async function isContentDuplicate(text, daysToCheck = 60) {
       .replace(/[^\w\s]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
+    
+    // Check if same historical event/topic (even if wording is different)
+    const previousKeyTerms = extractKeyHistoricalTerms(data.text);
+    const previousTermsSet = new Set(previousKeyTerms.map(t => t.toLowerCase()));
+    
+    // Count matching key terms (MUST BE DEFINED BEFORE USE)
+    const matchingTerms = [...currentTermsSet].filter(term => previousTermsSet.has(term));
+    const totalUniqueTerms = new Set([...currentTermsSet, ...previousTermsSet]).size;
     
     // Check hash similarity - ZERO tolerance
     if (hash === contentHash || hash.includes(contentHash) || contentHash.includes(hash)) {
@@ -238,21 +312,11 @@ export async function isContentDuplicate(text, daysToCheck = 60) {
     
     // Also check if the actual text has ANY similarity (ZERO tolerance)
     const similarity = calculateSimilarity(normalizedText, normalizedPrevious);
-    if (similarity > 0.0) {
-      // If there's any word overlap, check if key terms match
-      if (matchingTerms.length >= 1) {
-        console.log(`[Database] Duplicate detected: Text similarity (${similarity.toFixed(2)} similarity, ${matchingTerms.length} matching terms)`);
-        return true;
-      }
+    if (similarity > 0.0 && matchingTerms.length >= 1) {
+      // If there's any word overlap AND matching key terms, it's a duplicate
+      console.log(`[Database] Duplicate detected: Text similarity (${similarity.toFixed(2)} similarity, ${matchingTerms.length} matching terms: ${matchingTerms.join(', ')})`);
+      return true;
     }
-    
-    // Check if same historical event/topic (even if wording is different)
-    const previousKeyTerms = extractKeyHistoricalTerms(data.text);
-    const previousTermsSet = new Set(previousKeyTerms.map(t => t.toLowerCase()));
-    
-    // Count matching key terms
-    const matchingTerms = [...currentTermsSet].filter(term => previousTermsSet.has(term));
-    const totalUniqueTerms = new Set([...currentTermsSet, ...previousTermsSet]).size;
     
     // If enough key terms match, it's likely the same event/topic
     // ZERO tolerance - even small overlap = duplicate
@@ -260,7 +324,8 @@ export async function isContentDuplicate(text, daysToCheck = 60) {
     const termThreshold = 0.0; // ZERO tolerance - any matching terms = potential duplicate
     
     // If we have matching key terms (especially proper nouns, years, or event names), it's a duplicate
-    if (matchingTerms.length >= minMatchingTerms) {
+    // ZERO TOLERANCE: Even 1 matching key term = duplicate
+    if (matchingTerms.length >= 1) { // Changed from minMatchingTerms to 1 for absolute zero tolerance
       console.log(`[Database] Duplicate detected: Same historical event (${matchingTerms.length} matching terms: ${matchingTerms.join(', ')}, ratio: ${termMatchRatio.toFixed(2)})`);
       return true;
     }
@@ -403,14 +468,32 @@ export async function markImagePosted(imageBuffer, tweetId = null) {
  * Mark content as posted (for deduplication)
  */
 export async function markContentPosted(text, tweetId = null, imageBuffer = null) {
+  if (!text || typeof text !== 'string') {
+    console.warn("[Database] Cannot mark empty text as posted");
+    return;
+  }
+  
   const content = await loadJSON(POSTED_CONTENT_FILE);
   const contentHash = createContentHash(text);
   
+  // Store full text (up to 500 chars) for better duplicate detection
   content[contentHash] = {
-    text: text.slice(0, 200), // Store first 200 chars for comparison
+    text: text.slice(0, 500), // Increased from 200 to 500 for better comparison
     tweetId,
     timestamp: new Date().toISOString(),
+    fullHash: contentHash, // Store hash for reference
   };
+  
+  // Also store by first 100 chars as backup hash (in case hash algorithm changes)
+  const backupHash = text.toLowerCase().slice(0, 100).replace(/[^\w]/g, '-');
+  if (backupHash && backupHash !== contentHash && backupHash.length > 10) {
+    content[backupHash] = {
+      text: text.slice(0, 500),
+      tweetId,
+      timestamp: new Date().toISOString(),
+      fullHash: contentHash,
+    };
+  }
   
   await saveJSON(POSTED_CONTENT_FILE, content);
   
@@ -418,6 +501,8 @@ export async function markContentPosted(text, tweetId = null, imageBuffer = null
   if (imageBuffer) {
     await markImagePosted(imageBuffer, tweetId);
   }
+  
+  console.log(`[Database] Marked content as posted (hash: ${contentHash.substring(0, 30)}...)`);
 }
 
 /**

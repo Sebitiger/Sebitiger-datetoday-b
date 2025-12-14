@@ -84,11 +84,15 @@ export async function generateHiddenConnection() {
   const userPrompt = `
 Create a "Hidden Connection" tweet that reveals a surprising link between MAJOR historical events.
 
-CRITICAL: Focus on BIG MOMENTS - significant historical events:
+CRITICAL: Focus on SIGNIFICANT historical events across diverse topics:
 - Major wars, battles, treaties
 - Important discoveries and inventions
 - Significant political events
-- Major cultural milestones
+- Major cultural milestones (arts, literature, music, festivals)
+- Scientific breakthroughs
+- Exploration achievements
+- Social movements
+- Architectural achievements
 - Pivotal moments in history
 
 Requirements:
@@ -167,10 +171,32 @@ Generate a viral hidden connection between MAJOR historical events now:
 export async function postWhatIfThread() {
   try {
     console.log("[Viral] Generating What If scenario...");
-    const tweets = await generateWhatIfScenario();
+    
+    // Generate and check for duplicates (retry up to 5 times)
+    let tweets = await generateWhatIfScenario();
+    let attempts = 0;
+    const maxAttempts = 5;
+    
+    while (attempts < maxAttempts) {
+      if (!tweets || tweets.length < 3) {
+        attempts++;
+        tweets = await generateWhatIfScenario();
+        continue;
+      }
+      
+      // Check if first tweet (main content) is duplicate
+      const isDuplicate = await isContentDuplicate(tweets[0], 60);
+      if (!isDuplicate) {
+        break; // Found unique content
+      }
+      
+      console.log(`[Viral] Generated What If thread is similar to recent post, generating new one... (attempt ${attempts + 1}/${maxAttempts})`);
+      tweets = await generateWhatIfScenario();
+      attempts++;
+    }
     
     if (!tweets || tweets.length < 3) {
-      throw new Error("Failed to generate What If scenario");
+      throw new Error("Failed to generate unique What If scenario after duplicate checks");
     }
 
     // Fetch an image based on the first tweet content (REQUIRED - retry until found)
@@ -203,8 +229,24 @@ export async function postWhatIfThread() {
       console.error("[Viral] CRITICAL: Could not fetch image for What If thread. Posting will fail.");
       throw new Error("Failed to fetch required image for What If thread");
     }
+    
+    // Check if image is duplicate
+    const isImageDup = await isImageDuplicate(imageBuffer, 60);
+    if (isImageDup) {
+      throw new Error("Image is duplicate - aborting post");
+    }
+    
+    // Final check: verify content is still unique
+    const finalDuplicateCheck = await isContentDuplicate(tweets[0], 60);
+    if (finalDuplicateCheck) {
+      throw new Error("Content became duplicate during image fetching - aborting post");
+    }
 
-    await postThread(tweets, imageBuffer);
+    const threadTweetId = await postThread(tweets, imageBuffer);
+    
+    // Mark content and image as posted
+    await markContentPosted(tweets.join(' '), threadTweetId, imageBuffer);
+    
     console.log("[Viral] What If thread posted successfully");
   } catch (err) {
     console.error("[Viral] Error posting What If thread:", err.message);
@@ -340,11 +382,15 @@ export async function generateQuickFact() {
   const userPrompt = `
 Create a short, surprising fact about a MAJOR historical event that will go viral.
 
-CRITICAL: Focus on BIG MOMENTS - significant historical events:
+CRITICAL: Focus on SIGNIFICANT historical events across diverse topics:
 - Major wars, battles, treaties
 - Important discoveries and inventions
 - Significant political events
-- Major cultural milestones
+- Major cultural milestones (arts, literature, music)
+- Scientific breakthroughs and achievements
+- Exploration and geographic achievements
+- Social movements and cultural changes
+- Architectural and infrastructure achievements
 - Pivotal moments that shaped history
 
 Requirements:
@@ -544,11 +590,14 @@ export async function generateHistoryDebunk() {
   const userPrompt = `
 Create a "Debunking History" tweet that corrects a popular misconception about a MAJOR historical event.
 
-CRITICAL: Focus on BIG MOMENTS - significant historical events:
+CRITICAL: Focus on SIGNIFICANT historical events across diverse topics:
 - Major wars, battles, treaties
 - Important discoveries and inventions
 - Significant political events
-- Major cultural milestones
+- Major cultural milestones (arts, literature, music)
+- Scientific breakthroughs
+- Exploration achievements
+- Social movements
 - Famous historical figures and their actions
 
 Requirements:

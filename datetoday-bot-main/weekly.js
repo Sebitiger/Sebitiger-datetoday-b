@@ -2,6 +2,7 @@ import { getEventForDate } from "./fetchEvents.js";
 import { generateWeeklyThread } from "./generateThread.js";
 import { postThread } from "./twitterClient.js";
 import { fetchEventImage } from "./fetchImage.js";
+import { isContentDuplicate, markContentPosted, isImageDuplicate } from "./database.js";
 
 export async function postWeeklyThread() {
   console.log("[Weekly] Starting weekly thread job...");
@@ -11,10 +12,31 @@ export async function postWeeklyThread() {
     const event = await getEventForDate();
     console.log("[Weekly] Event for thread:", event.year, "-", event.description?.slice(0, 80) || "N/A", "...");
 
-    const tweets = await generateWeeklyThread(event);
+    // Generate thread and check for duplicates (retry up to 5 times)
+    let tweets = await generateWeeklyThread(event);
+    let attempts = 0;
+    const maxAttempts = 5;
+    
+    while (attempts < maxAttempts) {
+      if (!tweets || !tweets.length) {
+        attempts++;
+        tweets = await generateWeeklyThread(event);
+        continue;
+      }
+      
+      // Check if first tweet (main content) is duplicate
+      const isDuplicate = await isContentDuplicate(tweets[0], 60);
+      if (!isDuplicate) {
+        break; // Found unique content
+      }
+      
+      console.log(`[Weekly] Generated thread is similar to recent post, generating new one... (attempt ${attempts + 1}/${maxAttempts})`);
+      tweets = await generateWeeklyThread(event);
+      attempts++;
+    }
     
     if (!tweets || !tweets.length) {
-      throw new Error("No tweets generated for weekly thread");
+      throw new Error("No tweets generated for weekly thread after duplicate checks");
     }
 
     // Fetch an image for the event (REQUIRED - retry until found)
@@ -47,8 +69,24 @@ export async function postWeeklyThread() {
       console.error("[Weekly] CRITICAL: Could not fetch image after multiple attempts. Posting will fail.");
       throw new Error("Failed to fetch required image for weekly thread");
     }
+    
+    // Check if image is duplicate
+    const isImageDup = await isImageDuplicate(imageBuffer, 60);
+    if (isImageDup) {
+      throw new Error("Image is duplicate - aborting post");
+    }
+    
+    // Final check: verify content is still unique
+    const finalDuplicateCheck = await isContentDuplicate(tweets[0], 60);
+    if (finalDuplicateCheck) {
+      throw new Error("Content became duplicate during image fetching - aborting post");
+    }
 
-    await postThread(tweets, imageBuffer);
+    const threadTweetId = await postThread(tweets, imageBuffer);
+    
+    // Mark content and image as posted
+    await markContentPosted(tweets.join(' '), threadTweetId, imageBuffer);
+    
     console.log("[Weekly] Weekly thread job completed successfully.");
   } catch (err) {
     console.error("[Weekly] Job failed:", err.message || err);

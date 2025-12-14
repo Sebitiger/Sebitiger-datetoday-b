@@ -4,6 +4,7 @@
 import { openai, SYSTEM_PROMPT } from "./openaiCommon.js";
 import { withTimeout, retryWithBackoff, cleanAIContent } from "./utils.js";
 import { client } from "./twitterClient.js";
+import { isContentDuplicate, markContentPosted } from "./database.js";
 
 const OPENAI_TIMEOUT = 30000;
 
@@ -189,10 +190,33 @@ function parsePollResponse(text) {
 export async function postPoll() {
   try {
     console.log("[Polls] Generating poll...");
+    
+    // Generate and check for duplicates (retry up to 5 times)
     let poll = await generatePoll();
+    let attempts = 0;
+    const maxAttempts = 5;
+    
+    while (attempts < maxAttempts) {
+      if (!poll) {
+        attempts++;
+        poll = await generatePoll();
+        continue;
+      }
+      
+      // Check if poll question is duplicate
+      const pollText = `${poll.question} ${poll.options.join(' ')}`;
+      const isDuplicate = await isContentDuplicate(pollText, 60);
+      if (!isDuplicate) {
+        break; // Found unique poll
+      }
+      
+      console.log(`[Polls] Generated poll is similar to recent post, generating new one... (attempt ${attempts + 1}/${maxAttempts})`);
+      poll = await generatePoll();
+      attempts++;
+    }
 
     if (!poll) {
-      throw new Error("Failed to generate poll");
+      throw new Error("Failed to generate unique poll after duplicate checks");
     }
 
     // Validate and fix options before posting
@@ -234,6 +258,10 @@ export async function postPoll() {
 
     const tweetId = response.data.id;
     console.log("[Polls] Poll posted successfully. ID:", tweetId);
+
+    // Mark poll content as posted
+    const pollText = `${poll.question} ${poll.options.join(' ')}`;
+    await markContentPosted(pollText, tweetId);
 
     // Store the answer for later (to reply with explanation)
     // In production, store this in a database
