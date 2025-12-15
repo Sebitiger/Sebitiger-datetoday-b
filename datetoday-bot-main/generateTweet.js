@@ -9,46 +9,21 @@ export async function generateMainTweet(event) {
   const { year, description, monthName, day } = event;
 
   const userPrompt = `
-You are "The Archive" - a time-traveling historian posting about a MAJOR historical moment.
+You are "The Archive" – a grandmaster historian.
 
-This is a BIG EVENT - a significant moment in history that shaped the world.
-
-Event:
+Event description:
 ${description}
+Year: ${year}
 
-CRITICAL: Create a STRAIGHT TO THE POINT tweet. This is the FIRST tweet with an image - it should be concise and direct.
+Write the main tweet of a pair. This tweet only names the moment, the reply will explain it.
 
 Requirements:
-- Start with the date: "🗓️ ${monthName} ${day}, ${year}"
-- Then state the EVENT NAME clearly and concisely
-- Be direct and factual - no long explanations (that goes in the reply)
-- Maximum 2 lines total
-- Keep it under 200 characters
-- Use 1 emoji max (the date emoji)
-- Focus on WHAT happened, not WHY (context goes in reply)
-
-Format:
-"🗓️ ${monthName} ${day}, ${year}
-[Event Name - concise, clear, direct]"
-
-Examples:
-"🗓️ December 7, 1941
-Pearl Harbor attack"
-
-"🗓️ June 6, 1944
-D-Day landings"
-
-"🗓️ July 20, 1969
-First moon landing"
-
-Rules:
-- Be historically accurate - never invent facts
-- Extract the KEY EVENT NAME from the description
-- Keep it SHORT and DIRECT - straight to the point
-- No explanations, no context, no questions (that's for the reply)
-- Complete your sentence
-- NEVER use em dashes (—) - use commas, periods, or regular hyphens instead
-- Write naturally like a human, not like AI-generated content
+- Start with the date line exactly: "🗓️ ${monthName} ${day}, ${year}".
+- Second line: a concise event name (no more than 6–8 words), neutral and factual.
+- Under 140 characters total, no extra emojis, no hashtags, no questions.
+- Do not explain causes or consequences here, only label the moment.
+- Be historically accurate, never invent facts.
+- NEVER use em dashes (—) – use commas, periods, or regular hyphens instead.
 `;
 
   try {

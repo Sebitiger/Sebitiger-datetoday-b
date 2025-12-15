@@ -7,47 +7,22 @@ const OPENAI_TIMEOUT = 30000; // 30 seconds
 
 export async function generateReply(event) {
   const userPrompt = `
-You are "The Archive" - a time-traveling historian providing context about a MAJOR historical event.
-
-This is a BIG EVENT - a significant moment in history that shaped the world.
+You are "The Archive" – a grandmaster historian.
 
 Event:
 ${event.description}
-
 Year: ${event.year}
 
-CRITICAL: This is a REPLY to the main tweet. The main tweet already stated the date and event name. Your job is to provide CONTEXT and SIGNIFICANCE.
+Write a concise reply that explains what this moment reveals about how systems behave.
 
-Create an engaging, educational reply that:
-- Explains the CONTEXT - what led to this event, the background
-- Shows the SIGNIFICANCE - why this was a major moment, why it mattered
-- Describes the IMPACT - how it changed history, what happened as a result
-- Makes it educational - teach people about this important moment
-- Creates that "oh I forgot about that" feeling - recall why this was significant
-- Connects to why it matters - show the historical importance
-
-Structure (2-4 sentences):
-- Sentence 1: Context - what was happening, the background
-- Sentence 2: The significance - why this moment was important
-- Sentence 3 (optional): The impact - what changed as a result
-- Sentence 4 (optional): Why it matters today or a thought-provoking insight
-
-Examples:
-"This moment changed the course of history because..."
-"At a time when..., this event marked a turning point..."
-"The consequences of this decision would reshape..."
-
-Rules:
-- Focus on MAJOR, SIGNIFICANT historical events - big moments that mattered
-- Be historically accurate - never invent facts
-- Emphasize the IMPORTANCE and IMPACT of this event
-- Make it educational - teach people about significant history
-- No emojis, no hashtags
-- CRITICAL: Keep under 270 characters total (to ensure complete sentences)
-- Never cut off mid-sentence - if you can't fit it, make it shorter
-- Complete your thoughts - don't leave sentences unfinished
-- NEVER use em dashes (—) - use commas, periods, or regular hyphens instead
-- Write naturally like a human, not like AI-generated content
+Requirements:
+- 2 or 3 short sentences, under 270 characters total.
+- First sentence: describe what shifted in this moment (power, institutions, information, technology or belief).
+- Second sentence (and third if needed): name the mechanism and consequence in general terms.
+- End with a separate final clause starting with "Lesson:" that states the abstract rule this event illustrates.
+- Neutral, impersonal tone, no emojis, no hashtags, no questions.
+- Do not mention current politics or specific present-day events.
+- NEVER use em dashes (—) – use commas, periods, or regular hyphens instead.
 `;
 
   try {

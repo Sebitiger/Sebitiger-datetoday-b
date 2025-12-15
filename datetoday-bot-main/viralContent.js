@@ -14,32 +14,20 @@ const OPENAI_TIMEOUT = 60000; // 60 seconds for longer content
  */
 export async function generateWhatIfScenario() {
   const userPrompt = `
-Create a compelling "What If" alternate history scenario about a MAJOR historical event that will go viral.
+You are "The Archive" – a grandmaster historian.
 
-CRITICAL: Focus on BIG MOMENTS - significant historical events that truly shaped history:
-- Major wars and battles
-- Important treaties and agreements
-- Significant discoveries and inventions
-- Major political decisions
-- Pivotal moments that changed the course of history
+Create a 5–7 tweet "What If" scenario that uses an alternate outcome to explain a real historical mechanism.
 
 Requirements:
-- Pick a REAL MAJOR historical moment - a significant event that could have changed everything
-- Focus on events that MATTERED - big turning points, significant decisions, major conflicts
-- Explore the alternate timeline realistically
-- Show the SIGNIFICANCE and IMPACT of what could have been different
-- Make it educational - teach about important history
-- Make it thought-provoking and shareable
-- Write as a 5-7 tweet thread
-- Start with a hook: "What if [MAJOR EVENT] never happened?"
-- Build suspense and show the ripple effects of this BIG MOMENT
-- End with a question that sparks discussion about the significance
-- NEVER use em dashes (—) - use commas, periods, or regular hyphens instead
-- Write naturally like a human, not like AI-generated content
+- Choose one real, major turning point (no invented events).
+- Briefly state what actually happened, then describe a plausible alternate path.
+- In each tweet, highlight a mechanism (alliances, resources, information flows, institutions, technology, ideology).
+- Final tweet must start with "Lesson:" and state the general rule this scenario exposes about how systems behave.
+- Neutral, impersonal tone, no emojis, no hashtags, no questions.
+- Avoid modern political references, keep language general.
+- NEVER use em dashes (—) – use commas, periods, or regular hyphens instead.
 
-Format each tweet on a new line, no numbering.
-
-Generate a viral "What If" scenario about a MAJOR historical event now:
+Format: each tweet on a new line, with no numbering.
 `;
 
   try {
@@ -82,34 +70,16 @@ Generate a viral "What If" scenario about a MAJOR historical event now:
  */
 export async function generateHiddenConnection() {
   const userPrompt = `
-Create a "Hidden Connection" tweet that reveals a surprising link between MAJOR historical events.
+You are "The Archive" – a grandmaster historian.
 
-CRITICAL: Focus on SIGNIFICANT historical events across diverse topics:
-- Major wars, battles, treaties
-- Important discoveries and inventions
-- Significant political events
-- Major cultural milestones (arts, literature, music, festivals)
-- Scientific breakthroughs
-- Exploration achievements
-- Social movements
-- Architectural achievements
-- Pivotal moments in history
+Write one tweet that reveals a structural connection between two events.
 
 Requirements:
-- Find two seemingly unrelated MAJOR historical events that happened around the same time
-- Both events should be SIGNIFICANT - big moments that mattered
-- Show the fascinating connection between these important events
-- Make it shareable and "mind-blowing" - reveal something surprising about major history
-- Make it educational - teach about significant historical moments
-- Write as a single engaging tweet (under 270 chars to ensure complete sentences)
-- Start with a hook: "The same year..." or "While [MAJOR EVENT] happened, [MAJOR EVENT] was..."
-- End with a thought-provoking insight about the significance
-- CRITICAL: Complete your sentence - never cut off mid-sentence
-- Always end with proper punctuation
-- NEVER use em dashes (—) - use commas, periods, or regular hyphens instead
-- Write naturally like a human, not like AI-generated content
-
-Generate a viral hidden connection between MAJOR historical events now:
+- Choose two real, significant events from different domains or regions but in a similar era.
+- State both events briefly, then name the shared pattern (for example empire overreach, financial strain, technological disruption, institutional decay).
+- End with a separate clause starting "Pattern:" or "Lesson:" that states the general rule they share.
+- Under 270 characters, neutral and impersonal, no emojis, no hashtags, no questions.
+- NEVER use em dashes (—) – use commas, periods, or regular hyphens instead.
 `;
 
   try {
@@ -386,38 +356,20 @@ export async function postHiddenConnection() {
  */
 export async function generateQuickFact() {
   const userPrompt = `
-Create a short, surprising fact about a MAJOR historical event that will go viral.
+You are "The Archive" – a grandmaster historian.
 
-CRITICAL: Focus on SIGNIFICANT historical events across diverse topics:
-- Major wars, battles, treaties
-- Important discoveries and inventions
-- Significant political events
-- Major cultural milestones (arts, literature, music)
-- Scientific breakthroughs and achievements
-- Exploration and geographic achievements
-- Social movements and cultural changes
-- Architectural and infrastructure achievements
-- Pivotal moments that shaped history
+Write one tweet that states a concise historical fact and the general lesson it represents.
 
 Requirements:
-- Focus on MAJOR historical events - big moments, significant turning points, important figures
-- Under 250 characters (to ensure complete sentences)
-- Surprising or "mind-blowing" about a SIGNIFICANT event
-- Shareable (makes people want to retweet)
-- Educational - teach about important history
-- Make people think "oh I forgot about that!" - recall significant moments
-- Use 1 emoji max
-- Start with a hook: "Did you know..." or "In [year]..." or "Fun fact about [MAJOR EVENT]:"
-- Emphasize the SIGNIFICANCE and IMPORTANCE of the event
-- CRITICAL: Complete your sentence - never cut off mid-sentence
-- Always end with proper punctuation
-- NEVER use em dashes (—) - use commas, periods, or regular hyphens instead
-- Write naturally like a human, not like AI-generated content
+- Under 240 characters, 1 or 2 sentences.
+- First part: briefly name the event and what changed (empire, economy, belief, technology, institution, idea).
+- Second part must start with "Lesson:" and give the abstract rule this illustrates (for example about power, risk, feedback, information or incentives).
+- Use a wide range of eras and regions (ancient, medieval, early modern, modern, non‑Western), not only wars.
+- Neutral, impersonal tone, no emojis, no hashtags, no questions.
+- Avoid topics centred on World War I, World War II, Treaty of Versailles, Versailles, Pearl Harbor, D-Day or Normandy unless explicitly instructed.
+- NEVER use em dashes (—) – use commas, periods, or regular hyphens instead.
 
-Example (major event):
-"In 1969, we landed on the moon using less computing power than your smartphone. The Apollo guidance computer had 64KB of memory. Your phone? Millions of times more powerful. 🤯"
-
-Generate a viral quick fact about a MAJOR historical event now:
+Generate a quick fact plus lesson about a historical event now:
 `;
 
   try {
@@ -597,34 +549,19 @@ export async function postQuickFact() {
  */
 export async function generateHistoryDebunk() {
   const userPrompt = `
-Create a "Debunking History" tweet that corrects a popular misconception about a MAJOR historical event.
+You are "The Archive" – a grandmaster historian.
 
-CRITICAL: Focus on SIGNIFICANT historical events across diverse topics:
-- Major wars, battles, treaties
-- Important discoveries and inventions
-- Significant political events
-- Major cultural milestones (arts, literature, music)
-- Scientific breakthroughs
-- Exploration achievements
-- Social movements
-- Famous historical figures and their actions
+Write one tweet that corrects a simple historical misconception and states the deeper pattern.
 
 Requirements:
-- Pick a well-known misconception about a MAJOR historical event or significant moment
-- Focus on events that MATTERED - big moments, important figures, significant turning points
-- Explain the truth clearly about this significant event
-- Make it shareable (people love being "in the know" about major history)
-- Make it educational - teach about important history
-- Write as a single tweet (under 270 chars to ensure complete sentences)
-- Start with: "History myth:" or "Actually..." or "Here's the truth about [MAJOR EVENT]..."
-- Be engaging and educational about significant history
-- Emphasize why getting the truth about this MAJOR event matters
-- CRITICAL: Complete your sentence - never cut off mid-sentence
-- Always end with proper punctuation
-- NEVER use em dashes (—) - use commas, periods, or regular hyphens instead
-- Write naturally like a human, not like AI-generated content
+- Under 260 characters, neutral and impersonal.
+- Briefly state the misconception, then give the accurate version.
+- End with a clause starting "Lesson:" that gives the general rule this error illustrates (for example about propaganda, simplification, survivor bias, memory or power).
+- No emojis, no hashtags, no questions, no explicit modern political commentary.
+- Avoid debunks whose main topic is World War I, World War II, Treaty of Versailles, Versailles, Pearl Harbor, D-Day or Normandy unless explicitly instructed.
+- NEVER use em dashes (—) – use commas, periods, or regular hyphens instead.
 
-Generate a viral history debunk about a MAJOR historical event now:
+Generate a history debunk plus lesson now:
 `;
 
   try {

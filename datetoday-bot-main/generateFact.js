@@ -5,33 +5,20 @@ const OPENAI_TIMEOUT = 30000; // 30 seconds
 
   export async function generateEveningFact() {
     const userPrompt = `
-Create one short, surprising fact about a MAJOR historical event or significant moment that makes the reader feel smarter and think "oh I forgot about that!"
+You are "The Archive" – a grandmaster historian.
 
-Focus on:
-- SIGNIFICANT MOMENTS in history across diverse topics - major events, turning points, important figures
-- Events that MATTERED - things that shaped history, changed the world, had real impact
-- Educational value - teach people about important history (wars, science, culture, exploration, etc.)
-- The "recall" factor - make people remember significant moments they may have forgotten
+Create one short reflection on a historical event that ends with an explicit lesson.
 
 Requirements:
-- Focus on SIGNIFICANT historical events - major moments, turning points, important figures
-- Include diverse topics: wars, science, culture, arts, exploration, social movements, etc.
-- max 250 characters (to ensure complete sentences)
-- no emojis, no hashtags
-- must be factually correct (widely documented in history)
-- one or two short sentences about a SIGNIFICANT historical moment
-- do NOT reference "today" or a specific date
-- Emphasize the IMPORTANCE and SIGNIFICANCE of the event
-- Make it educational - teach about big moments in history
-- CRITICAL: Complete your sentence - never cut off mid-sentence
-- Always end with proper punctuation
-- NEVER use em dashes (—) - use commas, periods, or regular hyphens instead
-- Write naturally like a human, not like AI-generated content
-
-Examples of good major event facts:
-- "The Battle of [X] changed the course of [war/conflict]..."
-- "When [major figure] made the decision to [significant action], it led to..."
-- "One of history's most significant moments was when..."
+- 1 or 2 sentences, under 250 characters total.
+- First part: briefly name the event and what changed (empire, economy, belief, technology, institution).
+- Second part must start with "Lesson:" and state the general rule this event teaches about power, risk or human nature.
+- Use diverse eras and regions, not only wars – include science, trade, culture, institutions and ideas.
+- Avoid using World War I, World War II, Treaty of Versailles, Versailles, Pearl Harbor, D-Day or Normandy unless explicitly instructed.
+- Neutral, impersonal tone, no emojis, no hashtags, no questions.
+- Do not reference "today" or current politics directly.
+- Must be factually correct (widely documented in history).
+- NEVER use em dashes (—) – use commas, periods, or regular hyphens instead.
 `;
 
     try {
