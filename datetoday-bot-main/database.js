@@ -330,23 +330,38 @@ export async function isContentDuplicate(text, daysToCheck = 60) {
       return true;
     }
     
-    // Check for same year + same key event terms
-    const currentYear = text.match(/\b(1[0-9]{3}|20[0-2][0-9])\b/)?.[1];
+    // Check for same year + same key event terms (STRICTER)
+    const currentYear = textYear || text.match(/\b(1[0-9]{3}|20[0-2][0-9])\b/)?.[1];
     const previousYear = data.text.match(/\b(1[0-9]{3}|20[0-2][0-9])\b/)?.[1];
     
     if (currentYear && previousYear && currentYear === previousYear) {
-      // Same year - check if key event terms match
-      const eventTerms = ['treaty', 'battle', 'war', 'revolution', 'assassination', 'declaration', 'landing', 'attack', 'versailles', 'hitler', 'germany', 'france', 'britain'];
-      const currentEventTerms = eventTerms.filter(term => text.toLowerCase().includes(term));
+      // Same year - check if key event terms match (expanded list)
+      const eventTerms = ['treaty', 'battle', 'war', 'revolution', 'assassination', 'declaration', 'landing', 'attack', 'versailles', 'hitler', 'germany', 'france', 'britain', 'world war', 'ww1', 'ww2', 'pearl harbor', 'd-day', 'normandy', 'stalingrad', 'holocaust', 'nazi', 'soviet', 'russia', 'japan', 'america', 'united states'];
+      const currentEventTerms = eventTerms.filter(term => textLower.includes(term));
       const previousEventTerms = eventTerms.filter(term => data.text.toLowerCase().includes(term));
       
-        // ZERO tolerance - same year + any matching event term = duplicate
-        if (currentEventTerms.length > 0 && 
-            previousEventTerms.length > 0 && 
-            currentEventTerms.some(term => previousEventTerms.includes(term))) {
-          console.log(`[Database] Duplicate detected: Same year (${currentYear}) + same event type (${currentEventTerms.join(', ')})`);
-          return true;
-        }
+      // ZERO tolerance - same year + any matching event term = duplicate
+      if (currentEventTerms.length > 0 && 
+          previousEventTerms.length > 0 && 
+          currentEventTerms.some(term => previousEventTerms.includes(term))) {
+        console.log(`[Database] Duplicate detected: Same year (${currentYear}) + same event type (${currentEventTerms.join(', ')})`);
+        return true;
+      }
+    }
+    
+    // EXTRA STRICT: Check for same historical topic even across different years
+    // If both mention the same major event (e.g., "Treaty of Versailles", "World War I")
+    const majorEventKeywords = ['versailles', 'world war i', 'world war ii', 'ww1', 'ww2', 'pearl harbor', 'd-day', 'normandy', 'holocaust', 'nazi', 'hitler', 'stalingrad'];
+    const currentMajorEvents = majorEventKeywords.filter(keyword => textLower.includes(keyword));
+    const previousMajorEvents = majorEventKeywords.filter(keyword => data.text.toLowerCase().includes(keyword));
+    
+    if (currentMajorEvents.length > 0 && previousMajorEvents.length > 0) {
+      // If both mention the same major event, it's likely a duplicate topic
+      const matchingMajorEvents = currentMajorEvents.filter(event => previousMajorEvents.includes(event));
+      if (matchingMajorEvents.length > 0) {
+        console.log(`[Database] Duplicate detected: Same major historical event topic (${matchingMajorEvents.join(', ')})`);
+        return true;
+      }
     }
     
     // EXTRA STRICT: For "Did you know" facts, check if they're about the same topic
@@ -411,9 +426,15 @@ function createImageHash(imageBuffer) {
   if (!imageBuffer || !Buffer.isBuffer(imageBuffer)) {
     return null;
   }
-  // Create hash from first 10KB of image (enough to detect duplicates)
-  const sample = imageBuffer.slice(0, Math.min(10240, imageBuffer.length));
-  return crypto.createHash('md5').update(sample).digest('hex');
+  // Create hash from multiple samples across the image for better duplicate detection
+  // Sample from beginning, middle, and end to catch similar images
+  const size = imageBuffer.length;
+  const sample1 = imageBuffer.slice(0, Math.min(5120, size));
+  const sample2 = imageBuffer.slice(Math.floor(size * 0.3), Math.floor(size * 0.3) + 5120);
+  const sample3 = imageBuffer.slice(Math.max(0, size - 5120), size);
+  
+  const combined = Buffer.concat([sample1, sample2, sample3]);
+  return crypto.createHash('md5').update(combined).digest('hex');
 }
 
 /**

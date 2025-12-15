@@ -129,15 +129,35 @@ function scoreEventMajority(event) {
     score -= 30; // Reduced from 50 to 30 - allow more diverse events
   }
 
-  // Major wars and conflicts (high priority but not exclusive)
+  // PENALIZE 20th century wars to reduce over-focus (user feedback: too much WW1/WW2)
+  if (desc.includes("world war") && (event.year >= 1914 && event.year <= 1945)) {
+    score -= 30; // Penalize WW1/WW2 to reduce frequency
+  }
+  if (desc.includes("treaty of versailles") || desc.includes("versailles treaty")) {
+    score -= 20; // Reduce Versailles treaty posts (user example shows it's repetitive)
+  }
+  
+  // Major wars and conflicts (but less boost for 20th century)
   if (desc.includes("world war") || desc.includes("civil war") || desc.includes("revolution")) {
-    score += 50;
+    if (event.year < 1900) {
+      score += 50; // Higher boost for older wars
+    } else {
+      score += 30; // Lower boost for 20th century wars
+    }
   }
   if (desc.includes("battle") && /battle of [A-Z]/.test(event.description)) {
-    score += 40; // Named battles
+    if (event.year < 1900) {
+      score += 40; // Named battles from older periods
+    } else {
+      score += 25; // Lower for 20th century battles
+    }
   }
   if (desc.includes("war") || desc.includes("invasion")) {
-    score += 30;
+    if (event.year < 1900) {
+      score += 30;
+    } else {
+      score += 20; // Lower for recent wars
+    }
   }
   
   // BROADER TOPICS: Science and technology (expanded)
@@ -303,9 +323,24 @@ function scoreEventMajority(event) {
     score -= 15; // Reduced from 25 to 15
   }
 
-  // Bonus for older events (pre-1900 are often more "historical")
-  if (event.year < 1900) {
-    score += 10;
+  // MAJOR BONUS for older historical periods (to diversify from 20th century focus)
+  if (event.year < 1000) {
+    score += 40; // Ancient history - big bonus
+  } else if (event.year < 1500) {
+    score += 35; // Medieval period - big bonus
+  } else if (event.year < 1800) {
+    score += 30; // Renaissance/Early Modern - big bonus
+  } else if (event.year < 1900) {
+    score += 20; // 19th century - good bonus
+  } else if (event.year < 1950) {
+    score -= 10; // Early 20th century - slight penalty (too much WW1/WW2)
+  } else if (event.year < 2000) {
+    score -= 5; // Late 20th century - small penalty
+  }
+  
+  // Extra bonus for very ancient events
+  if (event.year < 500) {
+    score += 20; // Extra bonus for ancient times
   }
 
   return score;
