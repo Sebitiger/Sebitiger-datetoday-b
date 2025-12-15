@@ -71,7 +71,7 @@ export async function postWeeklyThread() {
     }
     
     // Check if image is duplicate
-    const isImageDup = await isImageDuplicate(imageBuffer, 60);
+    const isImageDup = await isImageDuplicate(imageBuffer, 90);
     if (isImageDup) {
       throw new Error("Image is duplicate - aborting post");
     }

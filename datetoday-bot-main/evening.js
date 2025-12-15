@@ -1,7 +1,7 @@
 import { generateEveningFact } from "./generateFact.js";
 import { postTweet, postTweetWithImage } from "./twitterClient.js";
 import { fetchImageForText } from "./fetchImage.js";
-import { isContentDuplicate, markContentPosted, isImageDuplicate } from "./database.js";
+import { isContentDuplicate, markContentPosted, isImageDuplicate, markTopicPosted } from "./database.js";
 
 export async function postEveningFact() {
   console.log("[Evening] Starting evening fact job...");
@@ -50,7 +50,7 @@ export async function postEveningFact() {
           
           if (fetchedImage) {
             // Check if image was already posted
-            const isImageDup = await isImageDuplicate(fetchedImage, 60);
+            const isImageDup = await isImageDuplicate(fetchedImage, 90);
             if (isImageDup) {
               console.warn(`[Evening] Image is duplicate, trying different fact...`);
               // Generate new fact and try again
@@ -110,6 +110,9 @@ export async function postEveningFact() {
     
     // Mark content AND image as posted to prevent duplicates
     await markContentPosted(fact, tweetId, imageBuffer);
+    
+    // Mark topic as posted (for cooldown)
+    await markTopicPosted(fact);
     
     console.log("[Evening] Evening fact job completed successfully.");
   } catch (err) {

@@ -5,7 +5,7 @@ import { generateMainTweet } from "./generateTweet.js";
 import { generateReply } from "./generateReply.js";
 import { fetchEventImage } from "./fetchImage.js";
 import { postTweet, postTweetWithImage } from "./twitterClient.js";
-import { isEventPosted, markEventPosted, createEventId, isImageDuplicate, markContentPosted, isContentDuplicate } from "./database.js";
+import { isEventPosted, markEventPosted, createEventId, isImageDuplicate, markContentPosted, isContentDuplicate, isTopicInCooldown, markTopicPosted } from "./database.js";
 import { isEventAppropriate } from "./moderation.js";
 import { trackPost } from "./analytics.js";
 import { info, error, logTweetPost } from "./logger.js";
@@ -20,12 +20,13 @@ export async function postDailyTweet() {
     let attempts = 0;
     const maxAttempts = 15;
     
-    // Check if event was already posted or inappropriate, try another if so
+    // Check if event was already posted, inappropriate, or topic in cooldown
     while (attempts < maxAttempts) {
       const isPosted = await isEventPosted(eventId);
       const isAppropriate = await isEventAppropriate(event);
+      const topicCooldown = await isTopicInCooldown(event.description);
       
-      if (!isPosted && isAppropriate) {
+      if (!isPosted && isAppropriate && !topicCooldown) {
         break; // Found good event
       }
       
@@ -33,6 +34,8 @@ export async function postDailyTweet() {
         info(`[Daily] Event already posted, fetching another... (attempt ${attempts + 1})`);
       } else if (!isAppropriate) {
         info(`[Daily] Event flagged by moderation, fetching another... (attempt ${attempts + 1})`);
+      } else if (topicCooldown) {
+        info(`[Daily] Topic in cooldown (WW1/WW2/Versailles), fetching another... (attempt ${attempts + 1})`);
       }
       
       event = await getRandomEvent();
@@ -174,8 +177,8 @@ export async function postDailyTweet() {
     
     info("[Daily] Image confirmed valid", { sizeKB: (imageBuffer.length / 1024).toFixed(2) });
 
-    // Check if image was already posted (prevent duplicate images)
-    const isImageDup = await isImageDuplicate(imageBuffer, 60);
+    // Check if image was already posted (prevent duplicate images - 90 days)
+    const isImageDup = await isImageDuplicate(imageBuffer, 90);
     if (isImageDup) {
       error("[Daily] Image is duplicate - aborting post to prevent repetition");
       throw new Error("Image was already posted recently - aborting to prevent duplicate");
@@ -205,6 +208,9 @@ export async function postDailyTweet() {
       
       // Mark content AND image as posted to prevent duplicates
       await markContentPosted(mainTweetText, mainTweetId, imageBuffer);
+      
+      // Mark topic as posted (for cooldown)
+      await markTopicPosted(mainTweetText);
     } catch (postErr) {
       logTweetPost("daily", null, false, postErr);
       throw postErr;

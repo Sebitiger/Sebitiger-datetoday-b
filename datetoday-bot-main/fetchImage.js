@@ -946,44 +946,158 @@ export async function fetchEventImage(event, requireImage = true) {
       eventSearchTerms.push(first30);
     }
     
-    // Try Pexels FIRST (most reliable with API key)
-    if (process.env.PEXELS_API_KEY && eventSearchTerms.length > 0) {
-      for (const term of eventSearchTerms) {
-        if (!term || term.length < 3) continue;
-        console.log(`[Image] Trying Pexels first for: "${term}"`);
-        const pexelsImage = await fetchFromPexels(term, event.description);
-        if (pexelsImage) {
-          console.log(`[Image] ✅ Found best matching image from Pexels for event`);
-          return pexelsImage;
+    // DIVERSIFIED IMAGE SEARCH: Rotate source order to avoid same images
+    // For WW1/WW2 events, use alternative search terms to avoid trench photos
+    const isWWEvent = event.description.toLowerCase().includes('world war') || 
+                      event.description.toLowerCase().includes('ww1') || 
+                      event.description.toLowerCase().includes('ww2') ||
+                      (event.year >= 1914 && event.year <= 1945 && event.description.toLowerCase().includes('war'));
+    
+    // For WW events, add alternative search terms (avoid generic "world war" searches)
+    if (isWWEvent) {
+      // Add specific non-trench terms
+      const altTerms = [];
+      if (event.description.toLowerCase().includes('treaty') || event.description.toLowerCase().includes('versailles')) {
+        altTerms.push('Versailles signing hall', 'Paris Peace Conference 1919', 'Wilson Clemenceau Lloyd George');
+      }
+      if (event.description.toLowerCase().includes('pearl harbor')) {
+        altTerms.push('Pearl Harbor memorial', 'Hawaii 1941', 'USS Arizona');
+      }
+      if (event.description.toLowerCase().includes('d-day') || event.description.toLowerCase().includes('normandy')) {
+        altTerms.push('Normandy beaches', 'D-Day planning', 'Eisenhower D-Day');
+      }
+      eventSearchTerms.push(...altTerms);
+    }
+    
+    // Rotate source order based on day to avoid always using same source
+    const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / (1000 * 60 * 60 * 24));
+    const sourceOrder = dayOfYear % 3; // Rotate between 3 orders
+    
+    let imageBuffer = null;
+    
+    // Order 0: Pexels -> Wikipedia -> Unsplash -> Wikimedia
+    // Order 1: Wikipedia -> Unsplash -> Pexels -> Wikimedia  
+    // Order 2: Unsplash -> Wikimedia -> Wikipedia -> Pexels
+    
+    if (sourceOrder === 0) {
+      // Try Pexels FIRST
+      if (process.env.PEXELS_API_KEY && eventSearchTerms.length > 0) {
+        for (const term of eventSearchTerms) {
+          if (!term || term.length < 3) continue;
+          console.log(`[Image] Trying Pexels (rotated order) for: "${term}"`);
+          imageBuffer = await fetchFromPexels(term, event.description);
+          if (imageBuffer) {
+            console.log(`[Image] ✅ Found image from Pexels`);
+            return imageBuffer;
+          }
         }
       }
-    }
-    
-    // Strategy 2: Try multiple Wikipedia search strategies
-    let imageBuffer = await searchWikipediaMultipleStrategies(event);
-    
-    if (imageBuffer) {
-      return imageBuffer;
-    }
-    
-    // Strategy 3: Try alternative sources (Unsplash, Wikimedia Commons) with accurate search terms
-    // Use the same accurate search terms we generated earlier
-    if (eventSearchTerms.length > 0) {
-      for (const term of eventSearchTerms) {
-        if (!term || term.length < 3) continue;
-        
-        // Try Unsplash (with event description for better matching)
-        imageBuffer = await fetchFromUnsplash(term, event.description);
-        if (imageBuffer) {
-          console.log(`[Image] ✅ Found best matching image from Unsplash for event`);
-          return imageBuffer;
+      
+      // Try Wikipedia
+      imageBuffer = await searchWikipediaMultipleStrategies(event);
+      if (imageBuffer) return imageBuffer;
+      
+      // Try Unsplash
+      if (eventSearchTerms.length > 0) {
+        for (const term of eventSearchTerms) {
+          if (!term || term.length < 3) continue;
+          imageBuffer = await fetchFromUnsplash(term, event.description);
+          if (imageBuffer) {
+            console.log(`[Image] ✅ Found image from Unsplash`);
+            return imageBuffer;
+          }
         }
-        
-        // Try Wikimedia Commons
-        imageBuffer = await fetchFromWikimediaCommons(term);
-        if (imageBuffer) {
-          console.log(`[Image] ✅ Found image from Wikimedia Commons for event`);
-          return imageBuffer;
+      }
+      
+      // Try Wikimedia Commons
+      if (eventSearchTerms.length > 0) {
+        for (const term of eventSearchTerms) {
+          if (!term || term.length < 3) continue;
+          imageBuffer = await fetchFromWikimediaCommons(term);
+          if (imageBuffer) {
+            console.log(`[Image] ✅ Found image from Wikimedia Commons`);
+            return imageBuffer;
+          }
+        }
+      }
+    } else if (sourceOrder === 1) {
+      // Try Wikipedia FIRST
+      imageBuffer = await searchWikipediaMultipleStrategies(event);
+      if (imageBuffer) return imageBuffer;
+      
+      // Try Unsplash
+      if (eventSearchTerms.length > 0) {
+        for (const term of eventSearchTerms) {
+          if (!term || term.length < 3) continue;
+          imageBuffer = await fetchFromUnsplash(term, event.description);
+          if (imageBuffer) {
+            console.log(`[Image] ✅ Found image from Unsplash`);
+            return imageBuffer;
+          }
+        }
+      }
+      
+      // Try Pexels
+      if (process.env.PEXELS_API_KEY && eventSearchTerms.length > 0) {
+        for (const term of eventSearchTerms) {
+          if (!term || term.length < 3) continue;
+          imageBuffer = await fetchFromPexels(term, event.description);
+          if (imageBuffer) {
+            console.log(`[Image] ✅ Found image from Pexels`);
+            return imageBuffer;
+          }
+        }
+      }
+      
+      // Try Wikimedia Commons
+      if (eventSearchTerms.length > 0) {
+        for (const term of eventSearchTerms) {
+          if (!term || term.length < 3) continue;
+          imageBuffer = await fetchFromWikimediaCommons(term);
+          if (imageBuffer) {
+            console.log(`[Image] ✅ Found image from Wikimedia Commons`);
+            return imageBuffer;
+          }
+        }
+      }
+    } else {
+      // Try Unsplash FIRST
+      if (eventSearchTerms.length > 0) {
+        for (const term of eventSearchTerms) {
+          if (!term || term.length < 3) continue;
+          imageBuffer = await fetchFromUnsplash(term, event.description);
+          if (imageBuffer) {
+            console.log(`[Image] ✅ Found image from Unsplash`);
+            return imageBuffer;
+          }
+        }
+      }
+      
+      // Try Wikimedia Commons
+      if (eventSearchTerms.length > 0) {
+        for (const term of eventSearchTerms) {
+          if (!term || term.length < 3) continue;
+          imageBuffer = await fetchFromWikimediaCommons(term);
+          if (imageBuffer) {
+            console.log(`[Image] ✅ Found image from Wikimedia Commons`);
+            return imageBuffer;
+          }
+        }
+      }
+      
+      // Try Wikipedia
+      imageBuffer = await searchWikipediaMultipleStrategies(event);
+      if (imageBuffer) return imageBuffer;
+      
+      // Try Pexels
+      if (process.env.PEXELS_API_KEY && eventSearchTerms.length > 0) {
+        for (const term of eventSearchTerms) {
+          if (!term || term.length < 3) continue;
+          imageBuffer = await fetchFromPexels(term, event.description);
+          if (imageBuffer) {
+            console.log(`[Image] ✅ Found image from Pexels`);
+            return imageBuffer;
+          }
         }
       }
     }

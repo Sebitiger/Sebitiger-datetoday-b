@@ -5,7 +5,7 @@ import { openai, SYSTEM_PROMPT } from "./openaiCommon.js";
 import { withTimeout, retryWithBackoff, cleanAIContent } from "./utils.js";
 import { postTweet, postThread, postTweetWithImage } from "./twitterClient.js";
 import { fetchImageForText, fetchEventImage } from "./fetchImage.js";
-import { isContentDuplicate, markContentPosted, isImageDuplicate } from "./database.js";
+import { isContentDuplicate, markContentPosted, isImageDuplicate, markTopicPosted } from "./database.js";
 
 const OPENAI_TIMEOUT = 60000; // 60 seconds for longer content
 
@@ -231,7 +231,7 @@ export async function postWhatIfThread() {
     }
     
     // Check if image is duplicate
-    const isImageDup = await isImageDuplicate(imageBuffer, 60);
+    const isImageDup = await isImageDuplicate(imageBuffer, 90);
     if (isImageDup) {
       throw new Error("Image is duplicate - aborting post");
     }
@@ -246,6 +246,9 @@ export async function postWhatIfThread() {
     
     // Mark content and image as posted
     await markContentPosted(tweets.join(' '), threadTweetId, imageBuffer);
+    
+    // Mark topic as posted (for cooldown)
+    await markTopicPosted(tweets[0]);
     
     console.log("[Viral] What If thread posted successfully");
   } catch (err) {
@@ -304,7 +307,7 @@ export async function postHiddenConnection() {
           
           if (fetchedImage) {
             // Check if image was already posted
-            const isImageDup = await isImageDuplicate(fetchedImage, 60);
+            const isImageDup = await isImageDuplicate(fetchedImage, 90);
             if (isImageDup) {
               console.warn(`[Viral] Image is duplicate, trying different tweet...`);
               // Generate new tweet and try again
@@ -359,7 +362,7 @@ export async function postHiddenConnection() {
       throw new Error("Content became duplicate during image fetching - aborting post");
     }
     
-    const isImageDup = await isImageDuplicate(imageBuffer, 60);
+    const isImageDup = await isImageDuplicate(imageBuffer, 90);
     if (isImageDup) {
       throw new Error("Image is duplicate - aborting post");
     }
@@ -368,6 +371,9 @@ export async function postHiddenConnection() {
     
     // Mark content AND image as posted to prevent duplicates
     await markContentPosted(tweet, tweetId, imageBuffer);
+    
+    // Mark topic as posted (for cooldown)
+    await markTopicPosted(tweet);
     
     console.log("[Viral] Hidden connection posted successfully");
   } catch (err) {
@@ -517,7 +523,7 @@ export async function postQuickFact() {
           
           if (fetchedImage) {
             // Check if image was already posted
-            const isImageDup = await isImageDuplicate(fetchedImage, 60);
+            const isImageDup = await isImageDuplicate(fetchedImage, 90);
             if (isImageDup) {
               console.warn(`[Viral] Image is duplicate, trying different tweet...`);
               // Generate new tweet and try again
@@ -576,6 +582,9 @@ export async function postQuickFact() {
     
     // Mark content AND image as posted to prevent duplicates
     await markContentPosted(tweet, tweetId, imageBuffer);
+    
+    // Mark topic as posted (for cooldown)
+    await markTopicPosted(tweet);
     
     console.log("[Viral] Quick fact posted successfully");
   } catch (err) {
@@ -721,7 +730,7 @@ export async function postHistoryDebunk() {
           
           if (fetchedImage) {
             // Check if image was already posted
-            const isImageDup = await isImageDuplicate(fetchedImage, 60);
+            const isImageDup = await isImageDuplicate(fetchedImage, 90);
             if (isImageDup) {
               console.warn(`[Viral] Image is duplicate, trying different tweet...`);
               // Generate new tweet and try again
@@ -776,7 +785,7 @@ export async function postHistoryDebunk() {
       throw new Error("Content became duplicate during image fetching - aborting post");
     }
     
-    const isImageDup = await isImageDuplicate(imageBuffer, 60);
+    const isImageDup = await isImageDuplicate(imageBuffer, 90);
     if (isImageDup) {
       throw new Error("Image is duplicate - aborting post");
     }
@@ -785,6 +794,9 @@ export async function postHistoryDebunk() {
     
     // Mark content AND image as posted to prevent duplicates
     await markContentPosted(tweet, tweetId, imageBuffer);
+    
+    // Mark topic as posted (for cooldown)
+    await markTopicPosted(tweet);
     
     console.log("[Viral] History debunk posted successfully");
   } catch (err) {

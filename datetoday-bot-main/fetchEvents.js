@@ -400,8 +400,9 @@ async function fetchEventsForDate(month, day) {
 /**
  * Selects a major event from the array, prioritizing high-scoring events
  * Uses weighted random selection - higher scores have better chance, but still some randomness
+ * NOW AVOIDS WW1/WW2 if limit reached
  */
-function selectMajorEvent(events) {
+async function selectMajorEvent(events) {
   if (!events.length) {
     return null;
   }
@@ -426,10 +427,43 @@ function selectMajorEvent(events) {
   
   // BROADER SELECTION: Allow more variety - prefer iconic (100+), but also include good events (30+)
   // This ensures we get diverse topics, not just wars and battles
-  const candidates = iconicEvents.length > 0 ? iconicEvents :
-                     veryMajorEvents.length > 0 ? veryMajorEvents :
-                     majorEvents.length > 0 ? majorEvents :
-                     scoredEvents.filter(item => item.score >= 30); // Lowered from 40 to 30 for broader topics
+  let candidates = iconicEvents.length > 0 ? iconicEvents :
+                   veryMajorEvents.length > 0 ? veryMajorEvents :
+                   majorEvents.length > 0 ? majorEvents :
+                   scoredEvents.filter(item => item.score >= 30); // Lowered from 40 to 30 for broader topics
+  
+  // FILTER OUT WW1/WW2 if limit reached
+  // Import dynamically to avoid circular dependency
+  let wwLimitReached = false;
+  try {
+    const { checkWWPostLimit } = await import('./database.js');
+    wwLimitReached = await checkWWPostLimit();
+  } catch (err) {
+    console.warn('[Events] Could not check WW limit:', err.message);
+  }
+  
+  if (wwLimitReached) {
+    // Remove WW1/WW2 events from candidates
+    const desc = (event) => event.description?.toLowerCase() || '';
+    const isWW = (event) => {
+      const d = desc(event);
+      return d.includes('world war') || d.includes('ww1') || d.includes('ww2') || 
+             d.includes('versailles') || d.includes('pearl harbor') || 
+             d.includes('d-day') || d.includes('normandy') ||
+             (event.year >= 1914 && event.year <= 1945 && (d.includes('war') || d.includes('battle')));
+    };
+    
+    const filteredCandidates = candidates.filter(item => !isWW(item.event));
+    
+    if (filteredCandidates.length > 0) {
+      console.log(`[Events] Filtered out ${candidates.length - filteredCandidates.length} WW1/WW2 events (limit reached)`);
+      candidates = filteredCandidates;
+    } else {
+      console.log(`[Events] Warning: All candidates are WW1/WW2, but limit reached. Using lower-scored non-WW events.`);
+      // Fallback to non-WW events even if lower scored
+      candidates = scoredEvents.filter(item => !isWW(item.event) && item.score >= 20);
+    }
+  }
   
   if (iconicEvents.length > 0) {
     console.log(`[Events] Found ${iconicEvents.length} iconic events - prioritizing these`);
@@ -484,8 +518,8 @@ export async function getRandomEvent() {
 
     const usableEvents = await fetchEventsForDate(month, day);
     
-    // Prioritize major events for daily posts
-    const majorEvent = selectMajorEvent(usableEvents);
+    // Prioritize major events for daily posts (now async to check WW limit)
+    const majorEvent = await selectMajorEvent(usableEvents);
     const selectedEvent = majorEvent || selectRandomEvent(usableEvents);
 
     if (majorEvent) {
@@ -510,8 +544,8 @@ export async function getEventForDate() {
     const day = date.getDate();
 
     const usableEvents = await fetchEventsForDate(month, day);
-    // Use major event selection for weekly threads too
-    const majorEvent = selectMajorEvent(usableEvents);
+    // Use major event selection for weekly threads too (now async)
+    const majorEvent = await selectMajorEvent(usableEvents);
     const selectedEvent = majorEvent || selectRandomEvent(usableEvents);
     
     if (majorEvent) {

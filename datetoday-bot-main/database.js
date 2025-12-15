@@ -14,6 +14,7 @@ const DATA_DIR = path.join(__dirname, "data");
 const POSTED_EVENTS_FILE = path.join(DATA_DIR, "posted-events.json");
 const POSTED_CONTENT_FILE = path.join(DATA_DIR, "posted-content.json");
 const POSTED_IMAGES_FILE = path.join(DATA_DIR, "posted-images.json");
+const RECENT_TOPICS_FILE = path.join(DATA_DIR, "recent-topics.json");
 const INTERACTIONS_FILE = path.join(DATA_DIR, "interactions.json");
 const POLLS_FILE = path.join(DATA_DIR, "polls.json");
 
@@ -440,7 +441,7 @@ function createImageHash(imageBuffer) {
 /**
  * Check if image was already posted recently
  */
-export async function isImageDuplicate(imageBuffer, daysToCheck = 60) {
+export async function isImageDuplicate(imageBuffer, daysToCheck = 90) {
   if (!imageBuffer || !Buffer.isBuffer(imageBuffer)) {
     return false;
   }
@@ -527,6 +528,107 @@ export async function markContentPosted(text, tweetId = null, imageBuffer = null
 }
 
 /**
+ * Extract topic from text (for topic cooldown)
+ */
+function extractTopic(text) {
+  if (!text || typeof text !== 'string') return null;
+  
+  const lower = text.toLowerCase();
+  
+  // Major event keywords
+  const topics = [
+    'versailles', 'world war i', 'world war ii', 'ww1', 'ww2', 
+    'pearl harbor', 'd-day', 'normandy', 'stalingrad', 'holocaust',
+    'nazi', 'hitler', 'germany', 'france', 'britain', 'russia', 'soviet',
+    'treaty of versailles', 'versailles treaty'
+  ];
+  
+  for (const topic of topics) {
+    if (lower.includes(topic)) {
+      return topic;
+    }
+  }
+  
+  // Extract year if present
+  const yearMatch = text.match(/\b(1[0-9]{3}|20[0-2][0-9])\b/);
+  if (yearMatch) {
+    const year = yearMatch[1];
+    // If it's WW1/WW2 era, mark it
+    if (parseInt(year) >= 1914 && parseInt(year) <= 1945) {
+      return `ww-era-${year}`;
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Check if topic is in cooldown (recently posted)
+ */
+export async function isTopicInCooldown(text, daysToCheck = 30) {
+  const topic = extractTopic(text);
+  if (!topic) return false;
+  
+  const recentTopics = await loadJSON(RECENT_TOPICS_FILE);
+  const cutoffTime = Date.now() - (daysToCheck * 24 * 60 * 60 * 1000);
+  
+  if (recentTopics[topic]) {
+    const postedTime = new Date(recentTopics[topic].timestamp).getTime();
+    if (postedTime > cutoffTime) {
+      console.log(`[Database] Topic in cooldown: "${topic}" (posted ${Math.round((Date.now() - postedTime) / (1000 * 60 * 60 * 24))} days ago)`);
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+/**
+ * Mark topic as posted (for cooldown)
+ */
+export async function markTopicPosted(text) {
+  const topic = extractTopic(text);
+  if (!topic) return;
+  
+  const recentTopics = await loadJSON(RECENT_TOPICS_FILE);
+  recentTopics[topic] = {
+    timestamp: new Date().toISOString(),
+    text: text.slice(0, 100),
+  };
+  
+  await saveJSON(RECENT_TOPICS_FILE, recentTopics);
+  console.log(`[Database] Marked topic as posted: "${topic}"`);
+}
+
+/**
+ * Check if WW1/WW2 post limit reached today
+ */
+export async function checkWWPostLimit() {
+  const recentTopics = await loadJSON(RECENT_TOPICS_FILE);
+  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  const cutoffTime = Date.now() - (24 * 60 * 60 * 1000); // Last 24 hours
+  
+  let wwPostsToday = 0;
+  
+  for (const [topic, data] of Object.entries(recentTopics)) {
+    if (topic.includes('ww') || topic.includes('world war') || topic.includes('versailles')) {
+      const postedTime = new Date(data.timestamp).getTime();
+      if (postedTime > cutoffTime) {
+        wwPostsToday++;
+      }
+    }
+  }
+  
+  // MAX 1 WW1/WW2 post per day
+  if (wwPostsToday >= 1) {
+    console.log(`[Database] WW1/WW2 post limit reached (${wwPostsToday} posts today)`);
+    return true;
+  }
+  
+  return false;
+}
+
+/**
  * Clean old data (keep last 30 days)
  */
 export async function cleanOldData() {
@@ -565,16 +667,27 @@ export async function cleanOldData() {
   }
   await saveJSON(POSTED_CONTENT_FILE, cleanedContent);
 
-  // Clean posted images (keep last 60 days)
+  // Clean posted images (keep last 90 days for better duplicate detection)
   const postedImages = await loadJSON(POSTED_IMAGES_FILE);
   const cleanedImages = {};
   for (const [hash, data] of Object.entries(postedImages)) {
     const postedTime = new Date(data.timestamp).getTime();
-    if (postedTime > (Date.now() - (60 * 24 * 60 * 60 * 1000))) {
+    if (postedTime > (Date.now() - (90 * 24 * 60 * 60 * 1000))) {
       cleanedImages[hash] = data;
     }
   }
   await saveJSON(POSTED_IMAGES_FILE, cleanedImages);
+
+  // Clean recent topics (keep last 30 days)
+  const recentTopics = await loadJSON(RECENT_TOPICS_FILE);
+  const cleanedTopics = {};
+  for (const [topic, data] of Object.entries(recentTopics)) {
+    const postedTime = new Date(data.timestamp).getTime();
+    if (postedTime > (Date.now() - (30 * 24 * 60 * 60 * 1000))) {
+      cleanedTopics[topic] = data;
+    }
+  }
+  await saveJSON(RECENT_TOPICS_FILE, cleanedTopics);
 
   console.log("[Database] Cleaned old data");
 }
