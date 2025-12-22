@@ -144,6 +144,26 @@ export async function postTweet(text, replyToId = null) {
 }
 
 /**
+ * Internal helper to upload media (image or video).
+ * @param {Buffer} mediaBuffer
+ * @param {"image"|"video"} type
+ * @returns {Promise<string>} mediaId
+ */
+async function uploadMedia(mediaBuffer, type) {
+  if (!mediaBuffer || !Buffer.isBuffer(mediaBuffer)) {
+    throw new Error("mediaBuffer must be a valid Buffer");
+  }
+  if (type !== "image" && type !== "video") {
+    throw new Error("Unsupported media type");
+  }
+
+  console.log(`[Twitter] Uploading ${type} media…`);
+  const mediaId = await client.v1.uploadMedia(mediaBuffer, { type });
+  console.log(`[Twitter] ${type} media uploaded. ID:`, mediaId);
+  return mediaId;
+}
+
+/**
  * Post a tweet with an image (Buffer).
  * If replyToId is provided, posts as a reply.
  */
@@ -165,13 +185,7 @@ export async function postTweetWithImage(text, imageBuffer, replyToId = null) {
       // Log tweet content for debugging
       console.log("[Twitter] Posting tweet with image:", validatedText.slice(0, 100) + (validatedText.length > 100 ? "..." : ""));
 
-      let mediaId = null;
-
-      if (imageBuffer) {
-        console.log("[Twitter] Uploading media…");
-        mediaId = await client.v1.uploadMedia(imageBuffer, { type: "image" });
-        console.log("[Twitter] Media uploaded. ID:", mediaId);
-      }
+      const mediaId = await uploadMedia(imageBuffer, "image");
 
       const payload = { text: validatedText };
 
@@ -223,6 +237,69 @@ export async function postTweetWithImage(text, imageBuffer, replyToId = null) {
   }
   
   throw lastError || new Error("Failed to post tweet with image after retries");
+}
+
+/**
+ * Post a tweet with a video (Buffer).
+ * If replyToId is provided, posts as a reply.
+ */
+export async function postTweetWithVideo(text, videoBuffer, replyToId = null) {
+  const maxRetries = 3;
+  let lastError = null;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      await waitIfRateLimited("tweets");
+      const validatedText = validateTweetText(text);
+
+      if (!videoBuffer || !Buffer.isBuffer(videoBuffer)) {
+        throw new Error("videoBuffer must be a valid Buffer");
+      }
+
+      console.log("[Twitter] Posting tweet with video:", validatedText.slice(0, 100) + (validatedText.length > 100 ? "..." : ""));
+
+      const mediaId = await uploadMedia(videoBuffer, "video");
+
+      const payload = { text: validatedText, media: { media_ids: [mediaId] } };
+
+      if (replyToId) {
+        if (typeof replyToId !== "string" && typeof replyToId !== "number") {
+          throw new Error("replyToId must be a string or number");
+        }
+        payload.reply = { in_reply_to_tweet_id: String(replyToId) };
+      }
+
+      const res = await client.v2.tweet(payload);
+      const tweetId = res.data.id;
+      console.log("[Twitter] Tweet with video posted. ID:", tweetId);
+      return tweetId;
+    } catch (err) {
+      lastError = err;
+
+      if (err.code === 429 || err.status === 429 || err.message?.includes("429")) {
+        console.warn("[Twitter] Rate limit hit (429) when posting video. Handling...");
+        const rateLimitInfo = handleRateLimitError(err, "tweets");
+
+        if (rateLimitInfo.rateLimited) {
+          const waitTime = Math.min(rateLimitInfo.waitTime || 900000, 900000);
+          console.log(`[Twitter] Waiting ${Math.round(waitTime / 1000)}s for rate limit reset...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          continue;
+        }
+      }
+
+      if (attempt === maxRetries - 1) {
+        console.error("[Twitter] Error posting tweet with video after retries:", err);
+        throw err;
+      }
+
+      const backoffDelay = Math.min(1000 * Math.pow(2, attempt), 10000);
+      console.log(`[Twitter] Retrying video tweet in ${backoffDelay}ms... (attempt ${attempt + 1}/${maxRetries})`);
+      await new Promise(resolve => setTimeout(resolve, backoffDelay));
+    }
+  }
+
+  throw lastError || new Error("Failed to post tweet with video after retries");
 }
 
 /**

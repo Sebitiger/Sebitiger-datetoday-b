@@ -94,3 +94,51 @@ export function cleanAIContent(text) {
   return cleaned.trim();
 }
 
+/**
+ * Deterministically pick a historical period for a given date.
+ * This is used so all posts in a single day focus on the same broad era.
+ * @param {Date} [date] - JS Date (defaults to now, in UTC)
+ * @returns {{id: string, label: string, description: string}}
+ */
+export function getDailyPeriod(date = new Date()) {
+  const periods = [
+    {
+      id: "ancient",
+      label: "Ancient world",
+      description: "Events before year 500, including Mesopotamia, Egypt, Greece, Rome, early Asian and other ancient civilizations.",
+    },
+    {
+      id: "medieval",
+      label: "Medieval era",
+      description: "Roughly 500–1500, including Byzantium, Islamic golden age, medieval Europe, early kingdoms in Africa and Asia.",
+    },
+    {
+      id: "early_modern",
+      label: "Early modern",
+      description: "1500–1800, including Renaissance, Reformation, global empires, scientific revolution and early capitalism.",
+    },
+    {
+      id: "nineteenth",
+      label: "Nineteenth century",
+      description: "1800–1900, including industrialisation, revolutions, nation‑states and imperial competition.",
+    },
+    {
+      id: "twentieth",
+      label: "Twentieth century (non‑world‑war focus)",
+      description: "1900–2000, but avoid making World War I and World War II the main topic, focus on decolonisation, technology, institutions and social change.",
+    },
+    {
+      id: "non_western",
+      label: "Non‑Western focus",
+      description: "Across eras, but emphasising Africa, Asia, the Middle East, the Americas and Oceania rather than Western Europe or the United States.",
+    },
+  ];
+
+  const startOfYear = Date.UTC(date.getUTCFullYear(), 0, 1);
+  const today = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  const dayOfYear = Math.floor((today - startOfYear) / (1000 * 60 * 60 * 24));
+
+  const index = dayOfYear % periods.length;
+  return periods[index];
+}
+

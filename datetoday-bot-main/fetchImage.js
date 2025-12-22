@@ -182,11 +182,42 @@ function validateImageMatch(image, searchTerm, eventDescription = null) {
       return false;
     }
   }
+
+  // Stricter validation for specific empires / civilizations (examples)
+  // Roman Empire – avoid generic Europe / political maps with no Roman context
+  if (eventLower.includes("roman empire") || (eventLower.includes("rome") && eventLower.includes("empire"))) {
+    const romanTerms = ["roman", "rome", "romans", "imperium romanum", "roman empire", "byzantine", "constantinople", "mediterranean"];
+    const hasRomanContext = romanTerms.some(term => imageDesc.includes(term));
+    if (!hasRomanContext) {
+      console.log("[Image] Rejecting image: Event about Roman Empire but image metadata lacks Roman context");
+      return false;
+    }
+  }
+
+  // Ottoman Empire – avoid generic WW1 trench photos, require Ottoman / region context
+  if (eventLower.includes("ottoman empire") || eventLower.includes("ottoman")) {
+    const ottomanTerms = ["ottoman", "istanbul", "constantinople", "turkey", "anatolia", "sultan", "ottoman empire", "middle east"];
+    const hasOttomanContext = ottomanTerms.some(term => imageDesc.includes(term));
+    if (!hasOttomanContext) {
+      console.log("[Image] Rejecting image: Event about Ottoman Empire but image metadata lacks Ottoman context");
+      return false;
+    }
+  }
+
+  // Aztec Empire – avoid generic conquest imagery without Aztec context
+  if (eventLower.includes("aztec")) {
+    const aztecTerms = ["aztec", "aztecs", "tenochtitlan", "mexico", "mesoamerica", "mexica", "montezuma", "cortes", "cortés"];
+    const hasAztecContext = aztecTerms.some(term => imageDesc.includes(term));
+    if (!hasAztecContext) {
+      console.log("[Image] Rejecting image: Event about Aztec Empire but image metadata lacks Aztec context");
+      return false;
+    }
+  }
   
-  // If we have key terms but image matches none, it's likely wrong
+  // Global rule: if we have several key terms but the image matches none, reject as inaccurate
   if (eventKeyTerms.length > 2 && !hasMatchingTerm) {
-    console.log(`[Image] Warning: Image may not match event (no key terms found)`);
-    // Don't reject, but log warning - scoring will handle it
+    console.log(`[Image] Rejecting image: No key terms from event found in image metadata`);
+    return false;
   }
   
   return true;

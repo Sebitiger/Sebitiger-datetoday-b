@@ -1,19 +1,23 @@
 import { openai, SYSTEM_PROMPT } from "./openaiCommon.js";
-import { withTimeout, retryWithBackoff, cleanAIContent } from "./utils.js";
+import { withTimeout, retryWithBackoff, cleanAIContent, getDailyPeriod } from "./utils.js";
 
 const OPENAI_TIMEOUT = 30000; // 30 seconds
 
   export async function generateEveningFact() {
+    const period = getDailyPeriod();
     const userPrompt = `
 You are "The Archive" – a grandmaster historian.
 
-Create one short reflection on a historical event that ends with an explicit lesson.
+Today you are focusing on this period: ${period.label}.
+${period.description}
+
+Create one short reflection on a historical event from this period that ends with an explicit lesson.
 
 Requirements:
 - 1 or 2 sentences, under 250 characters total.
 - First part: briefly name the event and what changed (empire, economy, belief, technology, institution).
 - Second part must start with "Lesson:" and state the general rule this event teaches about power, risk or human nature.
-- Use diverse eras and regions, not only wars – include science, trade, culture, institutions and ideas.
+- Stay inside the described period focus for your example.
 - Avoid using World War I, World War II, Treaty of Versailles, Versailles, Pearl Harbor, D-Day or Normandy unless explicitly instructed.
 - Neutral, impersonal tone, no emojis, no hashtags, no questions.
 - Do not reference "today" or current politics directly.

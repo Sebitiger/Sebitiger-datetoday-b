@@ -2,9 +2,10 @@
 // Advanced content generators for viral historian persona
 
 import { openai, SYSTEM_PROMPT } from "./openaiCommon.js";
-import { withTimeout, retryWithBackoff, cleanAIContent } from "./utils.js";
-import { postTweet, postThread, postTweetWithImage } from "./twitterClient.js";
+import { withTimeout, retryWithBackoff, cleanAIContent, getDailyPeriod } from "./utils.js";
+import { postTweet, postThread, postTweetWithImage, postTweetWithVideo } from "./twitterClient.js";
 import { fetchImageForText, fetchEventImage } from "./fetchImage.js";
+import { fetchVideoForText } from "./fetchVideo.js";
 import { isContentDuplicate, markContentPosted, isImageDuplicate, markTopicPosted } from "./database.js";
 
 const OPENAI_TIMEOUT = 60000; // 60 seconds for longer content
@@ -355,6 +356,7 @@ export async function postHiddenConnection() {
  * Generate "Quick Fact" - short, shareable historical fact
  */
 export async function generateQuickFact() {
+  const period = getDailyPeriod();
   const userPrompt = `
 You are "The Archive" – a grandmaster historian.
 
@@ -364,12 +366,13 @@ Requirements:
 - Under 240 characters, 1 or 2 sentences.
 - First part: briefly name the event and what changed (empire, economy, belief, technology, institution, idea).
 - Second part must start with "Lesson:" and give the abstract rule this illustrates (for example about power, risk, feedback, information or incentives).
-- Use a wide range of eras and regions (ancient, medieval, early modern, modern, non‑Western), not only wars.
+- Stay within this broad focus for today: ${period.label}.
+- ${period.description}
 - Neutral, impersonal tone, no emojis, no hashtags, no questions.
 - Avoid topics centred on World War I, World War II, Treaty of Versailles, Versailles, Pearl Harbor, D-Day or Normandy unless explicitly instructed.
 - NEVER use em dashes (—) – use commas, periods, or regular hyphens instead.
 
-Generate a quick fact plus lesson about a historical event now:
+Generate a quick fact plus lesson about a historical event from this period now:
 `;
 
   try {
@@ -458,7 +461,31 @@ export async function postQuickFact() {
       throw new Error("Failed to generate unique quick fact after multiple attempts");
     }
 
-    // Fetch an image based on the tweet content (REQUIRED - retry until found, check for duplicates)
+    // Decide whether to use video or image for this quick fact
+    const useVideoPreferred = !!process.env.PEXELS_API_KEY && Math.random() < 0.4; // ~40% chance when video API available
+
+    // Try video first (if enabled), then fall back to image
+    let videoBuffer = null;
+    if (useVideoPreferred) {
+      console.log("[Viral] Attempting to fetch video for quick fact...");
+      videoBuffer = await fetchVideoForText(tweet);
+    }
+
+    if (videoBuffer) {
+      console.log("[Viral] Video fetched successfully for quick fact.");
+
+      // Post with video
+      const tweetId = await postTweetWithVideo(tweet, videoBuffer, null);
+      
+      // Mark content as posted (image hash not relevant for video)
+      await markContentPosted(tweet, tweetId, null);
+      await markTopicPosted(tweet);
+      
+      console.log("[Viral] Quick fact video posted successfully");
+      return;
+    }
+
+    // Fallback: Fetch an image based on the tweet content (REQUIRED - retry until found, check for duplicates)
     let imageBuffer = null;
     let imageAttempts = 0;
     const maxImageAttempts = 10; // Increased to find unique image
