@@ -332,7 +332,8 @@ export async function isContentDuplicate(text, daysToCheck = 60) {
     }
     
     // Check for same year + same key event terms (STRICTER)
-    const currentYear = textYear || text.match(/\b(1[0-9]{3}|20[0-2][0-9])\b/)?.[1];
+    const textLower = text.toLowerCase();
+    const currentYear = text.match(/\b(1[0-9]{3}|20[0-2][0-9])\b/)?.[1];
     const previousYear = data.text.match(/\b(1[0-9]{3}|20[0-2][0-9])\b/)?.[1];
     
     if (currentYear && previousYear && currentYear === previousYear) {
