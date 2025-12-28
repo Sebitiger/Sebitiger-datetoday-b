@@ -99,33 +99,51 @@ async function processImageBuffer(rawImageBuffer) {
     
     console.log(`[Image] Original dimensions: ${originalWidth}x${originalHeight}, aspect ratio: ${aspectRatio.toFixed(2)}, portrait: ${isPortrait}`);
     
-    // Twitter optimal: 1200x600 (2:1 landscape) or 1200x675 (16:9)
-    // For portraits, we'll use "contain" to preserve the full image with padding
-    const targetWidth = 1200;
-    const targetHeight = 600;
+    // Twitter optimal sizes:
+    // Landscape: 1200x675 (16:9) or 1200x600 (2:1)
+    // Portrait: 1200x1600 (3:4) or 1200x1800 (2:3)
+    // Square: 1200x1200
     
     let processedBuffer;
     
-    if (isPortrait || isSquare) {
-      // For portraits/squares: Use "contain" to preserve full image, add padding
-      // This prevents cutting off faces/people
-      console.log("[Image] Portrait/square image detected - using 'contain' mode to preserve full image");
+    if (isPortrait) {
+      // For portraits: Keep portrait orientation, use optimal portrait size
+      // Twitter supports portrait images well - use 1200x1600 (3:4 ratio)
+      console.log("[Image] Portrait image detected - keeping portrait orientation (1200x1600)");
+      
+      const portraitWidth = 1200;
+      const portraitHeight = 1600; // 3:4 ratio, optimal for Twitter portrait images
       
       processedBuffer = await sharp(rawImageBuffer)
-        .resize(targetWidth, targetHeight, {
-          fit: "contain", // Preserves full image, adds padding if needed
+        .resize(portraitWidth, portraitHeight, {
+          fit: "contain", // Preserves full image, maintains aspect ratio
           position: "center",
-          background: { r: 18, g: 18, b: 18, alpha: 1 } // Dark background (Twitter-like dark mode color)
+          background: { r: 18, g: 18, b: 18, alpha: 1 } // Dark background for any padding
+        })
+        .jpeg({ quality: 90, mozjpeg: true })
+        .toBuffer();
+    } else if (isSquare) {
+      // For squares: Keep square format
+      console.log("[Image] Square image detected - keeping square format (1200x1200)");
+      
+      processedBuffer = await sharp(rawImageBuffer)
+        .resize(1200, 1200, {
+          fit: "contain",
+          position: "center",
+          background: { r: 18, g: 18, b: 18, alpha: 1 }
         })
         .jpeg({ quality: 90, mozjpeg: true })
         .toBuffer();
     } else {
-      // For landscape: Use "cover" for optimal Twitter display
-      console.log("[Image] Landscape image - using 'cover' mode for optimal display");
+      // For landscape: Use optimal landscape size
+      console.log("[Image] Landscape image - keeping landscape orientation (1200x675)");
+      
+      const landscapeWidth = 1200;
+      const landscapeHeight = 675; // 16:9 ratio, optimal for Twitter landscape images
       
       processedBuffer = await sharp(rawImageBuffer)
-        .resize(targetWidth, targetHeight, {
-          fit: "cover",
+        .resize(landscapeWidth, landscapeHeight, {
+          fit: "cover", // Fill the frame for landscape
           position: "center", // Smart center cropping
         })
         .jpeg({ quality: 90, mozjpeg: true })
@@ -134,20 +152,40 @@ async function processImageBuffer(rawImageBuffer) {
     
     console.log("[Image] Image processed. Size:", (processedBuffer.length / 1024).toFixed(2), "KB");
     
-    // If still too large, reduce quality
+    // If still too large, reduce quality while maintaining orientation
     if (processedBuffer.length > 5 * 1024 * 1024) {
-      console.warn("[Image] Image too large, reducing quality...");
-      const reducedWidth = 1000;
-      const reducedHeight = isPortrait || isSquare ? 1000 : 500; // Taller for portraits
+      console.warn("[Image] Image too large, reducing quality while maintaining orientation...");
       
-      return await sharp(rawImageBuffer)
-        .resize(reducedWidth, reducedHeight, {
-          fit: isPortrait || isSquare ? "contain" : "cover",
-          position: "center",
-          background: isPortrait || isSquare ? { r: 18, g: 18, b: 18, alpha: 1 } : undefined
-        })
-        .jpeg({ quality: 85, mozjpeg: true })
-        .toBuffer();
+      if (isPortrait) {
+        // Reduce portrait size proportionally
+        return await sharp(rawImageBuffer)
+          .resize(1000, 1333, { // Maintain 3:4 ratio
+            fit: "contain",
+            position: "center",
+            background: { r: 18, g: 18, b: 18, alpha: 1 }
+          })
+          .jpeg({ quality: 85, mozjpeg: true })
+          .toBuffer();
+      } else if (isSquare) {
+        // Reduce square size
+        return await sharp(rawImageBuffer)
+          .resize(1000, 1000, {
+            fit: "contain",
+            position: "center",
+            background: { r: 18, g: 18, b: 18, alpha: 1 }
+          })
+          .jpeg({ quality: 85, mozjpeg: true })
+          .toBuffer();
+      } else {
+        // Reduce landscape size proportionally
+        return await sharp(rawImageBuffer)
+          .resize(1000, 562, { // Maintain 16:9 ratio
+            fit: "cover",
+            position: "center"
+          })
+          .jpeg({ quality: 85, mozjpeg: true })
+          .toBuffer();
+      }
     }
     
     return processedBuffer;
@@ -289,11 +327,13 @@ function scoreImageRelevance(image, searchTerm, eventDescription = null) {
     score += Math.min(image.likes / 100, 20); // Max 20 points for popularity
   }
   
-  // Prefer landscape orientation (better for Twitter)
+  // Accept both portrait and landscape - we'll process them appropriately
+  // Don't penalize portrait images - they work well on Twitter too
   if (image.width && image.height) {
     const aspectRatio = image.width / image.height;
-    if (aspectRatio >= 1.5 && aspectRatio <= 2.5) {
-      score += 10; // Good for Twitter (2:1 ratio)
+    // Good aspect ratios for Twitter: landscape (1.5-2.5) or portrait (0.4-0.75)
+    if ((aspectRatio >= 1.5 && aspectRatio <= 2.5) || (aspectRatio >= 0.4 && aspectRatio <= 0.75)) {
+      score += 10; // Good aspect ratio for Twitter
     }
   }
   
@@ -307,7 +347,8 @@ function scoreImageRelevance(image, searchTerm, eventDescription = null) {
 async function fetchFromUnsplash(searchTerm, eventDescription = null) {
   try {
     const query = encodeURIComponent(searchTerm);
-    const url = `https://api.unsplash.com/search/photos?query=${query}&per_page=10&orientation=landscape`; // Get more results to choose from
+    // Allow both portrait and landscape images - we'll process them appropriately
+    const url = `https://api.unsplash.com/search/photos?query=${query}&per_page=10`; // Get both orientations
     
     const headers = {};
     if (process.env.UNSPLASH_ACCESS_KEY) {
@@ -369,7 +410,8 @@ async function fetchFromUnsplash(searchTerm, eventDescription = null) {
 async function fetchFromPexels(searchTerm, eventDescription = null) {
   try {
     const query = encodeURIComponent(searchTerm);
-    const url = `https://api.pexels.com/v1/search?query=${query}&per_page=15&orientation=landscape`; // Get more results
+    // Allow both portrait and landscape images - we'll process them appropriately
+    const url = `https://api.pexels.com/v1/search?query=${query}&per_page=15`; // Get both orientations
     
     const headers = {};
     if (process.env.PEXELS_API_KEY) {
@@ -457,9 +499,9 @@ async function fetchFromPexels(searchTerm, eventDescription = null) {
         if (pixels > 2000000) { // > 2MP
           score += 10;
         }
-        // Good aspect ratio for Twitter
+        // Good aspect ratio for Twitter (both landscape and portrait)
         const aspectRatio = photo.width / photo.height;
-        if (aspectRatio >= 1.5 && aspectRatio <= 2.5) {
+        if ((aspectRatio >= 1.5 && aspectRatio <= 2.5) || (aspectRatio >= 0.4 && aspectRatio <= 0.75)) {
           score += 10;
         }
       }
