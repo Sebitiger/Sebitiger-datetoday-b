@@ -138,51 +138,56 @@ function buildDailyPrompt(event) {
   const format = selectTweetFormat();
   
   const formatPrompts = {
-    surprising_fact: `Create a VIRAL tweet that makes people stop scrolling and share immediately.
+    surprising_fact: `Create a VIRAL tweet that makes people stop scrolling and share immediately (like successful meme accounts).
 
 Event: ${description}
 Year: ${year}
 Date: ${monthName} ${day}
 
-CRITICAL FOR VIRALITY:
+CRITICAL FOR VIRALITY (learned from 5.9M follower account):
 1. First 3 words = hook that makes people stop. Use surprising/controversial angle.
-2. Challenge assumptions: "Everyone thinks X, but actually Y..."
-3. Include what happened - be specific with surprising details
-4. End with something that makes people want to reply or share
-5. Complete your thought - never end with "..." or cut off mid-sentence
+2. Add humor/wit when appropriate (entertainment value = shares)
+3. Challenge assumptions: "Everyone thinks X, but actually Y..."
+4. Include what happened - be specific with surprising details
+5. End with something that makes people want to reply or share
+6. Make it ENTERTAINING - people share what makes them laugh or think
+7. Complete your thought - never end with "..." or cut off mid-sentence
 
-VIRAL HOOK OPTIONS (pick the strongest):
-- "Everyone thinks [common belief], but actually [surprising truth]"
-- "This is the story you didn't learn in school..."
-- "You won't believe what happened on ${monthName} ${day}, ${year}:"
-- "This changes everything you thought you knew about [topic]"
+VIRAL HOOK OPTIONS (meme-style but with depth):
+- "Everyone thinks [common belief], but actually [surprising truth]" (meme hook)
+- "Plot twist: [surprising fact]" (entertaining reveal)
+- "This is the story you didn't learn in school..." (engaging hook)
+- "You won't believe what happened on ${monthName} ${day}, ${year}:" (shareable)
+- "History be like: [funny observation]" (meme format)
 - "${monthName} ${day}, ${year}: [Surprising fact that challenges assumptions]"
 
 Format:
-- Start with STRONG hook that challenges assumptions or reveals surprising truth
+- Start with STRONG hook that challenges assumptions or reveals surprising truth (meme-style)
+- Add humor/wit naturally if it fits (entertainment = shares)
 - Include date: ${monthName} ${day}, ${year}
 - State what happened with specific, surprising details
 - Add a detail that makes it shareable (connection to today, surprising consequence, etc.)
 - End with hook that invites engagement (question, thought-provoking statement, or "this is why...")
 - Under 140 characters TOTAL
-- Use 1 emoji strategically if it adds emphasis
-- Be conversational and engaging
+- Use 1 emoji strategically if it adds emphasis (memes use emojis well)
+- Be conversational, engaging, and ENTERTAINING
 - NEVER use em dashes (—) – use commas, periods, or regular hyphens
 - NEVER end with "..." - always complete the sentence
 
 Example structure:
-"Everyone thinks [common belief], but on ${monthName} ${day}, ${year}, [surprising truth]. [Why this matters/connects to today]."`,
+"Plot twist: Everyone thinks [common belief], but on ${monthName} ${day}, ${year}, [surprising truth]. [Why this matters/connects to today]."`,
 
-    human_story: `Tell a COMPELLING human story that makes people feel something. Focus on the people, their emotions, their decisions.
+    human_story: `Tell a COMPELLING human story that makes people feel something (entertaining + emotional = shares).
 
 Event: ${description}
 Year: ${year}
 Date: ${monthName} ${day}
 
-CRITICAL: 
+CRITICAL (learned from viral accounts): 
 1. Human stories with emotion get shared. Make people feel something.
-2. You MUST include what actually happened - don't just describe feelings.
-3. Complete your thought - never end with "..." or cut off mid-sentence.
+2. Add entertainment value - make it engaging, not just emotional
+3. You MUST include what actually happened - don't just describe feelings.
+4. Complete your thought - never end with "..." or cut off mid-sentence.
 
 Format:
 - Start with a hook about the person or moment: "[Person] was [age] when..." or "In ${year}, [person] made a decision that changed everything"
@@ -190,10 +195,12 @@ Format:
 - State what actually happened - be specific about the event
 - Focus on the human element - emotions, struggles, triumphs
 - Make it relatable - connect to experiences everyone understands
+- Add humor/wit if it fits naturally (entertainment = shares)
 - End with impact - what changed for them or others
 - Under 140 characters TOTAL
-- Use 1 emoji if it adds emotion
+- Use 1 emoji if it adds emotion (memes use emojis well)
 - Be conversational, like telling a friend a story
+- Make it ENTERTAINING - people share what makes them feel something
 - NEVER use em dashes (—) – use commas, periods, or regular hyphens instead
 - NEVER end with "..." - always complete the sentence
 
@@ -224,28 +231,30 @@ Format:
 Example structure:
 "${monthName} ${day}, ${year}: [What happened]. [What changed]. [Why it mattered]."`,
 
-    relatable_connection: `Create a VIRAL tweet that connects this historical event to something people experience TODAY.
+    relatable_connection: `Create a VIRAL tweet that connects this historical event to something people experience TODAY (meme-style shareability).
 
 Event: ${description}
 Year: ${year}
 Date: ${monthName} ${day}
 
-CRITICAL FOR VIRALITY:
-1. Connections to today make content EXTREMELY shareable
-2. Make the parallel obvious and surprising
+CRITICAL FOR VIRALITY (learned from 5.9M follower account):
+1. Connections to today make content EXTREMELY shareable (people love relatable content)
+2. Make the parallel obvious and surprising (add humor if it fits)
 3. Use specific examples people can relate to
-4. End with insight that makes people think "this is so true"
+4. End with insight that makes people think "this is so true" (shareable moment)
+5. Make it ENTERTAINING - people share what makes them laugh or nod in agreement
 
 Format:
-- Start with STRONG hook: "${year}: [Event]. 2024: [Surprising parallel]" or "History is repeating itself..."
+- Start with STRONG hook: "${year}: [Event]. 2024: [Surprising parallel]" or "History is repeating itself..." or "History be like: [funny observation]"
 - Include date: ${monthName} ${day}, ${year}
 - Show clear, surprising connection - make it obvious and relatable
+- Add humor/wit if it fits naturally (entertainment = shares)
 - Use parallel structure for impact
 - Make it specific - not vague ("This is like..." → "This is exactly like [specific modern situation]")
 - End with insight that makes people want to share
 - Under 140 characters TOTAL
-- Use 1 emoji if it emphasizes the connection
-- Be conversational and relatable
+- Use 1 emoji if it emphasizes the connection (memes use emojis well)
+- Be conversational, relatable, and ENTERTAINING
 - NEVER use em dashes (—) – use commas, periods, or regular hyphens
 - NEVER end with "..." - always complete the sentence
 
