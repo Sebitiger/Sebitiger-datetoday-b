@@ -56,8 +56,31 @@ export async function generateContent(contentType, context = {}) {
       text = truncateIntelligently(text, config.maxLength);
     }
     
+    // Remove trailing ellipsis or incomplete endings
+    text = text.replace(/\.\.\.+$/, '').trim();
+    if (text.endsWith('…')) {
+      text = text.slice(0, -1).trim();
+    }
+    
     // Ensure proper ending
     text = ensureProperEnding(text);
+    
+    // Final validation: ensure we didn't create an incomplete sentence
+    if (text.endsWith('...') || text.endsWith('…') || text.match(/\.\.\.$/)) {
+      console.warn(`[ContentGenerator] Content ends with ellipsis, attempting to fix...`);
+      // Try to find a complete sentence before the ellipsis
+      const lastSentenceEnd = Math.max(
+        text.lastIndexOf('.'),
+        text.lastIndexOf('!'),
+        text.lastIndexOf('?')
+      );
+      if (lastSentenceEnd > text.length * 0.5) {
+        text = text.slice(0, lastSentenceEnd + 1).trim();
+      } else {
+        // If no good sentence end, just remove ellipsis and add period
+        text = text.replace(/\.\.\.+$/, '').replace(/…+$/, '').trim() + '.';
+      }
+    }
     
     console.log(`[ContentGenerator] Generated ${contentType} successfully`);
     return text;
@@ -121,27 +144,32 @@ Event: ${description}
 Year: ${year}
 Date: ${monthName} ${day}
 
-CRITICAL: The first 3 words determine if people keep reading. Make them count.
+CRITICAL: 
+1. The first 3 words determine if people keep reading. Make them count.
+2. You MUST include what actually happened - don't just hint at it.
+3. Complete your thought - never end with "..." or cut off mid-sentence.
 
 Hook Options (pick the strongest):
 - "Did you know..." (classic, works)
 - "This is wild:" (attention-grabbing)
 - "Wait until you hear..." (creates curiosity)
 - "You won't believe..." (shareable)
-- "[Year]: [Surprising fact]" (direct)
+- "${monthName} ${day}, ${year}:" (direct)
 
 Format:
 - Start with a STRONG hook (first 3 words are critical)
 - Include the date naturally: ${monthName} ${day}, ${year}
+- State what actually happened - be specific, not vague
 - Make it shareable - something people will want to retweet
 - Add a surprising detail or connection
-- Under 140 characters
+- Under 140 characters TOTAL
 - Use 1 emoji if it adds emotion (not required)
 - Be conversational, not academic
 - NEVER use em dashes (—) – use commas, periods, or regular hyphens instead
+- NEVER end with "..." - always complete the sentence
 
 Example structure:
-"Did you know in ${year}, [surprising fact]? ${monthName} ${day} changed everything when [key detail]. [Why it matters]."`,
+"Did you know on ${monthName} ${day}, ${year}, [what actually happened]? [Surprising detail]. [Why it matters]."`,
 
     human_story: `Tell a COMPELLING human story that makes people feel something. Focus on the people, their emotions, their decisions.
 
@@ -149,21 +177,26 @@ Event: ${description}
 Year: ${year}
 Date: ${monthName} ${day}
 
-CRITICAL: Human stories with emotion get shared. Make people feel something.
+CRITICAL: 
+1. Human stories with emotion get shared. Make people feel something.
+2. You MUST include what actually happened - don't just describe feelings.
+3. Complete your thought - never end with "..." or cut off mid-sentence.
 
 Format:
 - Start with a hook about the person or moment: "[Person] was [age] when..." or "In ${year}, [person] made a decision that changed everything"
 - Include the date naturally: ${monthName} ${day}, ${year}
+- State what actually happened - be specific about the event
 - Focus on the human element - emotions, struggles, triumphs
 - Make it relatable - connect to experiences everyone understands
 - End with impact - what changed for them or others
-- Under 140 characters
+- Under 140 characters TOTAL
 - Use 1 emoji if it adds emotion
 - Be conversational, like telling a friend a story
 - NEVER use em dashes (—) – use commas, periods, or regular hyphens instead
+- NEVER end with "..." - always complete the sentence
 
 Example structure:
-"[Person] was [age] when ${monthName} ${day}, ${year} changed everything. [Emotional detail]. [Impact]."`,
+"[Person] was [age] when ${monthName} ${day}, ${year} changed everything. [What happened]. [Impact]."`,
 
     moment_of_change: `This event was a turning point. Show what changed and why it mattered.
 
@@ -171,14 +204,23 @@ Event: ${description}
 Year: ${year}
 Date: ${monthName} ${day}
 
+CRITICAL:
+1. You MUST state what actually happened - don't just say "everything changed"
+2. Complete your thought - never end with "..." or cut off mid-sentence
+
 Format:
 - Start with the date: ${monthName} ${day}, ${year}
+- State what actually happened - be specific about the event
 - Emphasize what changed - the before and after, the shift, the impact
 - Make it clear why this moment was significant
-- Under 140 characters
+- Under 140 characters TOTAL
 - Use 1 emoji if it adds emphasis
 - Be direct and powerful
-- NEVER use em dashes (—) – use commas, periods, or regular hyphens instead`,
+- NEVER use em dashes (—) – use commas, periods, or regular hyphens instead
+- NEVER end with "..." - always complete the sentence
+
+Example structure:
+"${monthName} ${day}, ${year}: [What happened]. [What changed]. [Why it mattered]."`,
 
     relatable_connection: `Create a SHAREABLE tweet that connects this historical event to something people experience TODAY.
 
@@ -202,20 +244,27 @@ Format:
 Example structure:
 "${year}: [Event]. 2024: [Modern parallel]. History doesn't repeat, but it rhymes. ${monthName} ${day} reminds us [insight]."`,
 
-    dramatic_scene: `Paint a picture. Set the scene. Make people imagine what it was like.
+    dramatic_scene: `Paint a vivid scene BUT always include what actually happened. Don't just describe - tell the story.
 
 Event: ${description}
 Year: ${year}
 Date: ${monthName} ${day}
 
+CRITICAL: You MUST mention what actually happened. Scene-setting is great, but the historical fact is essential.
+
 Format:
 - Start with the date: ${monthName} ${day}, ${year}
-- Paint a vivid scene - what did it look like? What did it feel like?
-- Use descriptive language that helps people visualize
-- Under 140 characters
+- Paint a brief vivid scene (1-2 sentences max) - what did it look like?
+- THEN immediately state what happened: "[What actually occurred]"
+- Make it clear what the historical event was
+- Under 140 characters TOTAL
 - Use 1 emoji if it adds to the scene
-- Be evocative and engaging
-- NEVER use em dashes (—) – use commas, periods, or regular hyphens instead`,
+- Be evocative but informative
+- NEVER use em dashes (—) – use commas, periods, or regular hyphens instead
+- NEVER end with "..." or cut off mid-sentence - always complete the thought
+
+Example structure:
+"${monthName} ${day}, ${year}: [Brief scene description]. [What actually happened - the historical fact]."`,
 
     question_hook: `Create an ENGAGING tweet that starts with a question hook that makes people want to reply.
 
@@ -534,31 +583,31 @@ function processThread(text, config) {
 }
 
 /**
- * Truncate text intelligently
+ * Truncate text intelligently - but NEVER cut off mid-sentence
  */
 function truncateIntelligently(text, maxLength) {
   if (text.length <= maxLength) return text;
   
-  const reserve = 3; // For ellipsis
-  const max = maxLength - reserve;
-  
-  // Try to cut at sentence boundary
-  const sentenceEndings = ['. ', '! ', '? ', '.\n', '!\n', '?\n'];
+  // Try to cut at sentence boundary first (preferred)
+  const sentenceEndings = ['. ', '! ', '? '];
   for (const ending of sentenceEndings) {
-    const lastIndex = text.lastIndexOf(ending, max);
-    if (lastIndex > max * 0.7) {
+    const lastIndex = text.lastIndexOf(ending, maxLength);
+    if (lastIndex > maxLength * 0.6) { // Lower threshold to prefer complete sentences
       return text.slice(0, lastIndex + 1).trim();
     }
   }
   
-  // Try word boundary
-  const lastSpace = text.lastIndexOf(' ', max);
-  if (lastSpace > max * 0.8) {
-    return text.slice(0, lastSpace).trim() + '…';
+  // Try word boundary (avoid cutting mid-word)
+  const lastSpace = text.lastIndexOf(' ', maxLength);
+  if (lastSpace > maxLength * 0.7) {
+    // Don't add ellipsis if we're cutting - just end at word boundary
+    return text.slice(0, lastSpace).trim();
   }
   
-  // Hard cut
-  return text.slice(0, max).trim() + '…';
+  // Last resort: hard cut, but try to avoid it
+  // If we have to hard cut, it means the content is way too long
+  console.warn(`[ContentGenerator] Content too long (${text.length} chars), had to hard cut to ${maxLength}`);
+  return text.slice(0, maxLength - 1).trim();
 }
 
 /**

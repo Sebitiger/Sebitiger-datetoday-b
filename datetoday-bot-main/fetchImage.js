@@ -196,6 +196,34 @@ async function processImageBuffer(rawImageBuffer) {
 }
 
 /**
+ * Detect if text describes a historical scene (vs. modern imagery)
+ */
+function isHistoricalSceneDescription(text) {
+  const lower = text.toLowerCase();
+  
+  // Historical scene indicators (descriptive, evocative language)
+  const historicalSceneMarkers = [
+    "picture", "imagine", "picture a", "imagine a", "envision", "visualize",
+    "lush", "pristine", "untouched", "ancient", "medieval", "vintage",
+    "swaying", "breeze", "turquoise", "crystal clear", "emerald",
+    "waiting to", "new frontier", "uncharted", "discovered", "explored",
+    "centuries ago", "long ago", "in those days", "back then"
+  ];
+  
+  // Modern imagery indicators (satellite, aerial, contemporary)
+  const modernImageryMarkers = [
+    "satellite", "aerial view", "from space", "drone", "overhead",
+    "modern", "today", "current", "present day", "now", "contemporary",
+    "developed", "urban", "cityscape", "infrastructure", "runway", "airport"
+  ];
+  
+  const hasHistoricalMarkers = historicalSceneMarkers.some(marker => lower.includes(marker));
+  const hasModernMarkers = modernImageryMarkers.some(marker => lower.includes(marker));
+  
+  return hasHistoricalMarkers && !hasModernMarkers;
+}
+
+/**
  * Validate if image actually matches the event (reject clearly wrong matches)
  */
 function validateImageMatch(image, searchTerm, eventDescription = null) {
@@ -203,6 +231,25 @@ function validateImageMatch(image, searchTerm, eventDescription = null) {
   
   const imageDesc = (image.description || image.alt_description || image.title || "").toLowerCase();
   const eventLower = eventDescription.toLowerCase();
+  
+  // CRITICAL: Reject modern satellite/aerial imagery when text describes historical scene
+  if (isHistoricalSceneDescription(eventDescription)) {
+    const modernImageryTerms = ["satellite", "aerial", "from space", "overhead view", "drone", "google earth", "map view", "topographic"];
+    const isModernImagery = modernImageryTerms.some(term => imageDesc.includes(term));
+    
+    if (isModernImagery) {
+      console.log(`[Image] Rejecting image: Text describes historical scene but image is modern satellite/aerial imagery`);
+      return false;
+    }
+    
+    // Prefer historical/period-appropriate images
+    const historicalImageTerms = ["historical", "vintage", "antique", "old", "ancient", "period", "era", "19th century", "18th century", "illustration", "painting", "engraving", "drawing"];
+    const isHistoricalImage = historicalImageTerms.some(term => imageDesc.includes(term));
+    
+    if (isHistoricalImage) {
+      console.log(`[Image] ✅ Preferring historical image for historical scene description`);
+    }
+  }
   
   // Extract key terms from event (excluding generic words)
   const eventKeyTerms = eventLower
@@ -221,7 +268,7 @@ function validateImageMatch(image, searchTerm, eventDescription = null) {
     }
   }
 
-  // Stricter validation for specific empires / civilizations (examples)
+  // Stricter validation for specific empires / civilizations
   // Roman Empire – avoid generic Europe / political maps with no Roman context
   if (eventLower.includes("roman empire") || (eventLower.includes("rome") && eventLower.includes("empire"))) {
     const romanTerms = ["roman", "rome", "romans", "imperium romanum", "roman empire", "byzantine", "constantinople", "mediterranean"];
@@ -271,6 +318,21 @@ function scoreImageRelevance(image, searchTerm, eventDescription = null) {
   
   // Check image description/title relevance
   const imageDesc = (image.description || image.alt_description || image.title || "").toLowerCase();
+  
+  // CRITICAL: Heavy penalty for modern satellite/aerial imagery when text describes historical scene
+  if (eventDescription && isHistoricalSceneDescription(eventDescription)) {
+    const modernImageryTerms = ["satellite", "aerial", "from space", "overhead view", "drone", "google earth", "map view", "topographic"];
+    if (modernImageryTerms.some(term => imageDesc.includes(term))) {
+      score -= 100; // Very heavy penalty - completely wrong type of image
+      console.log(`[Image] Heavy penalty: Modern satellite imagery for historical scene description`);
+    }
+    
+    // Bonus for historical/period-appropriate images
+    const historicalImageTerms = ["historical", "vintage", "antique", "old", "ancient", "period", "era", "19th century", "18th century", "illustration", "painting", "engraving", "drawing", "lithograph"];
+    if (historicalImageTerms.some(term => imageDesc.includes(term))) {
+      score += 30; // Strong bonus for historical images
+    }
+  }
   
   // CRITICAL: Penalize generic matches that don't match the actual event
   const genericTerms = ["christmas", "holiday", "celebration", "nativity", "decoration", "lights"];
@@ -963,8 +1025,30 @@ export async function fetchEventImage(event, requireImage = true) {
   try {
     console.log("[Image] Starting image fetch for event:", event.description?.slice(0, 80));
     
+    // Check if this is a historical scene description (needs period-appropriate images)
+    const isHistoricalScene = isHistoricalSceneDescription(event.description);
+    if (isHistoricalScene) {
+      console.log("[Image] Detected historical scene description - prioritizing period-appropriate images");
+    }
+    
     // Strategy 1: Extract accurate search terms from event (prioritize specific historical phrases)
     const eventSearchTerms = [];
+    
+    // If historical scene, add period-specific search terms
+    if (isHistoricalScene && event.year) {
+      const year = parseInt(event.year);
+      if (year < 500) {
+        eventSearchTerms.push("ancient", "antiquity", "classical");
+      } else if (year < 1500) {
+        eventSearchTerms.push("medieval", "middle ages");
+      } else if (year < 1800) {
+        eventSearchTerms.push("renaissance", "17th century", "18th century");
+      } else if (year < 1900) {
+        eventSearchTerms.push("19th century", "victorian", "historical");
+      } else {
+        eventSearchTerms.push("early 20th century", "vintage", "historical");
+      }
+    }
     
     // Extract specific historical event phrases (highest priority)
     const historicalEventPatterns = [
@@ -999,6 +1083,10 @@ export async function fetchEventImage(event, requireImage = true) {
         .join(" ");
       if (importantTerms.length > 5) {
         eventSearchTerms.push(`${event.year} ${importantTerms}`);
+        // For historical scenes, also add without year to find period illustrations
+        if (isHistoricalScene) {
+          eventSearchTerms.push(`${importantTerms} historical`, `${importantTerms} vintage`);
+        }
       }
     }
     
