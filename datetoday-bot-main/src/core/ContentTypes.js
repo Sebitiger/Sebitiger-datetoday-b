@@ -19,7 +19,7 @@ export const CONTENT_CONFIG = {
     maxLength: 140,
     requiresMedia: true,
     mediaType: 'image_or_video',
-    videoChance: 0.3,
+    videoChance: 0.5, // Increased from 0.3 - videos get more engagement
     formatStyles: ['surprising_fact', 'human_story', 'moment_of_change', 'relatable_connection', 'dramatic_scene', 'question_hook', 'simple_statement']
   },
   [CONTENT_TYPES.QUICK_FACT]: {
@@ -27,7 +27,7 @@ export const CONTENT_CONFIG = {
     maxLength: 240,
     requiresMedia: true,
     mediaType: 'image_or_video',
-    videoChance: 0.6,
+    videoChance: 0.8, // Increased from 0.6 - videos get significantly more views
     formatStyles: ['surprising', 'insightful']
   },
   [CONTENT_TYPES.EVENING_FACT]: {
@@ -105,4 +105,5 @@ export function requiresMedia(type) {
 export function getMediaType(type) {
   return getContentConfig(type).mediaType;
 }
+
 
