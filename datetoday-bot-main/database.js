@@ -304,6 +304,21 @@ export async function isContentDuplicate(text, daysToCheck = 60) {
     const matchingTerms = [...currentTermsSet].filter(term => previousTermsSet.has(term));
     const totalUniqueTerms = new Set([...currentTermsSet, ...previousTermsSet]).size;
     
+    // Filter out common words that don't indicate duplicate content
+    // Month names, day names, and other common words should not trigger duplicates
+    const commonWordsToIgnore = [
+      'january', 'february', 'march', 'april', 'may', 'june',
+      'july', 'august', 'september', 'october', 'november', 'december',
+      'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
+      'today', 'this', 'that', 'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by',
+      'year', 'day', 'month', 'time', 'date', 'event', 'history', 'historical'
+    ];
+    
+    // Filter out common words from matching terms
+    const meaningfulMatchingTerms = matchingTerms.filter(term => 
+      !commonWordsToIgnore.includes(term.toLowerCase()) && term.length > 3
+    );
+    
     // Check hash similarity - ZERO tolerance
     if (hash === contentHash || hash.includes(contentHash) || contentHash.includes(hash)) {
       // Any hash match = duplicate (even if text is slightly different)
@@ -311,23 +326,22 @@ export async function isContentDuplicate(text, daysToCheck = 60) {
       return true;
     }
     
-    // Also check if the actual text has ANY similarity (ZERO tolerance)
+    // Also check if the actual text has significant similarity
     const similarity = calculateSimilarity(normalizedText, normalizedPrevious);
-    if (similarity > 0.0 && matchingTerms.length >= 1) {
-      // If there's any word overlap AND matching key terms, it's a duplicate
-      console.log(`[Database] Duplicate detected: Text similarity (${similarity.toFixed(2)} similarity, ${matchingTerms.length} matching terms: ${matchingTerms.join(', ')})`);
+    // Require meaningful matches (not just common words) AND higher similarity threshold
+    if (similarity > 0.15 && meaningfulMatchingTerms.length >= 2) {
+      // Need at least 15% similarity AND 2+ meaningful matching terms
+      console.log(`[Database] Duplicate detected: Text similarity (${similarity.toFixed(2)} similarity, ${meaningfulMatchingTerms.length} meaningful matching terms: ${meaningfulMatchingTerms.join(', ')})`);
       return true;
     }
     
-    // If enough key terms match, it's likely the same event/topic
-    // ZERO tolerance - even small overlap = duplicate
-    const termMatchRatio = totalUniqueTerms > 0 ? matchingTerms.length / totalUniqueTerms : 0;
-    const termThreshold = 0.0; // ZERO tolerance - any matching terms = potential duplicate
+    // If enough meaningful key terms match, it's likely the same event/topic
+    const termMatchRatio = totalUniqueTerms > 0 ? meaningfulMatchingTerms.length / totalUniqueTerms : 0;
     
-    // If we have matching key terms (especially proper nouns, years, or event names), it's a duplicate
-    // ZERO TOLERANCE: Even 1 matching key term = duplicate
-    if (matchingTerms.length >= 1) { // Changed from minMatchingTerms to 1 for absolute zero tolerance
-      console.log(`[Database] Duplicate detected: Same historical event (${matchingTerms.length} matching terms: ${matchingTerms.join(', ')}, ratio: ${termMatchRatio.toFixed(2)})`);
+    // Require at least 2 meaningful matching terms (proper nouns, years, event names)
+    // This prevents false positives from common words like "december"
+    if (meaningfulMatchingTerms.length >= 2) {
+      console.log(`[Database] Duplicate detected: Same historical event (${meaningfulMatchingTerms.length} meaningful matching terms: ${meaningfulMatchingTerms.join(', ')}, ratio: ${termMatchRatio.toFixed(2)})`);
       return true;
     }
     
