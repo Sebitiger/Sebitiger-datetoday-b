@@ -72,22 +72,73 @@ async function fetchFromPexelsVideo(searchTerm) {
 }
 
 /**
- * Fetch a video for free‑form text (fact / quick fact content).
- * For now we just pass the text as query and rely on Pexels search.
+ * Extract better search terms from text for video search
+ * Tries to find relevant historical or visual terms
  */
-export async function fetchVideoForText(text) {
-  if (!text || typeof text !== "string") return null;
-
-  // Simple keyword extraction: keep a few meaningful words
-  const words = text
+function extractVideoSearchTerms(text) {
+  if (!text || typeof text !== "string") return ["history"];
+  
+  const lower = text.toLowerCase();
+  
+  // Try to extract key historical terms
+  const historicalTerms = [];
+  
+  // Look for years (can help with era-specific videos)
+  const yearMatch = text.match(/\b(1[0-9]{3}|20[0-2][0-9])\b/);
+  if (yearMatch) {
+    const year = parseInt(yearMatch[1]);
+    if (year < 500) historicalTerms.push("ancient");
+    else if (year < 1500) historicalTerms.push("medieval");
+    else if (year < 1800) historicalTerms.push("renaissance");
+    else if (year < 1900) historicalTerms.push("19th century");
+    else historicalTerms.push("20th century");
+  }
+  
+  // Extract meaningful nouns (longer words, proper nouns)
+  const words = lower
     .replace(/[^\w\s]/g, " ")
     .split(/\s+/)
-    .filter(w => w.length > 3)
-    .slice(0, 5)
-    .join(" ");
+    .filter(w => w.length > 4 && !["this", "that", "with", "from", "about", "which", "their", "there", "would", "could", "after", "before", "during", "history", "historical"].includes(w))
+    .slice(0, 3);
+  
+  // Combine terms
+  const searchTerms = [...new Set([...historicalTerms, ...words])];
+  
+  // If we have good terms, use them; otherwise use generic historical terms
+  if (searchTerms.length > 0) {
+    return searchTerms.slice(0, 2); // Use top 2 terms
+  }
+  
+  // Fallback to generic historical/visual terms
+  return ["history", "ancient"];
+}
 
-  const query = words || "history";
-  return await fetchFromPexelsVideo(query);
+/**
+ * Fetch a video for free‑form text (fact / quick fact content).
+ * Tries multiple search terms to find relevant videos.
+ */
+export async function fetchVideoForText(text) {
+  if (!text || typeof text !== "string") {
+    console.log("[Video] Empty text provided for video search");
+    return null;
+  }
+
+  const searchTerms = extractVideoSearchTerms(text);
+  console.log(`[Video] Extracted search terms: ${searchTerms.join(", ")}`);
+
+  // Try each search term until we find a video
+  for (const term of searchTerms) {
+    console.log(`[Video] Trying search term: "${term}"`);
+    const video = await fetchFromPexelsVideo(term);
+    if (video) {
+      console.log(`[Video] ✅ Successfully found video for term: "${term}"`);
+      return video;
+    }
+  }
+  
+  // If all specific terms fail, try a generic "history" search as last resort
+  console.log("[Video] Trying generic 'history' search as fallback...");
+  return await fetchFromPexelsVideo("history");
 }
 
 

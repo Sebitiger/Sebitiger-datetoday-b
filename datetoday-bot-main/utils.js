@@ -142,3 +142,27 @@ export function getDailyPeriod(date = new Date()) {
   return periods[index];
 }
 
+/**
+ * Selects a random tweet format style to vary content and prevent repetition
+ * @returns {string} - Format style identifier
+ */
+export function selectTweetFormat() {
+  const formats = [
+    'surprising_fact',      // "Wait, did you know...?" hook
+    'human_story',          // Focus on the people involved
+    'moment_of_change',     // The turning point that changed everything
+    'relatable_connection', // Connect to something people experience today
+    'dramatic_scene',       // Paint the picture, set the scene
+    'question_hook',        // Start with a question that makes people think
+    'simple_statement'      // Direct, powerful statement
+  ];
+  
+  // Use day of year + hour to make it deterministic but still varied
+  const now = new Date();
+  const dayOfYear = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / (1000 * 60 * 60 * 24));
+  const hour = now.getHours();
+  const index = (dayOfYear * 7 + hour) % formats.length;
+  
+  return formats[index];
+}
+
