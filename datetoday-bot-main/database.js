@@ -338,10 +338,17 @@ export async function isContentDuplicate(text, daysToCheck = 60) {
     // If enough meaningful key terms match, it's likely the same event/topic
     const termMatchRatio = totalUniqueTerms > 0 ? meaningfulMatchingTerms.length / totalUniqueTerms : 0;
     
-    // Require at least 2 meaningful matching terms (proper nouns, years, event names)
-    // This prevents false positives from common words like "december"
-    if (meaningfulMatchingTerms.length >= 2) {
-      console.log(`[Database] Duplicate detected: Same historical event (${meaningfulMatchingTerms.length} meaningful matching terms: ${meaningfulMatchingTerms.join(', ')}, ratio: ${termMatchRatio.toFixed(2)})`);
+    // Require at least 3 meaningful matching terms AND higher similarity for same event detection
+    // This allows different angles on the same event (e.g., different hooks, different perspectives)
+    // Only flag as duplicate if it's clearly the same content, not just the same event
+    if (meaningfulMatchingTerms.length >= 3 && similarity > 0.25) {
+      console.log(`[Database] Duplicate detected: Same historical event (${meaningfulMatchingTerms.length} meaningful matching terms: ${meaningfulMatchingTerms.join(', ')}, ratio: ${termMatchRatio.toFixed(2)}, similarity: ${similarity.toFixed(2)})`);
+      return true;
+    }
+    
+    // If we have many matching terms (5+) even with lower similarity, it's likely duplicate
+    if (meaningfulMatchingTerms.length >= 5) {
+      console.log(`[Database] Duplicate detected: Many matching terms (${meaningfulMatchingTerms.length} meaningful matching terms: ${meaningfulMatchingTerms.join(', ')})`);
       return true;
     }
     

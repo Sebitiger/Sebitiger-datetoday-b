@@ -157,24 +157,47 @@ async function generateContentWithRetry(contentType, context, maxRetries = 5) {
   throw lastError || new ContentGenerationError('Failed to generate content after retries', { contentType });
 }
 
+// Track events we've tried today to avoid infinite loops
+const attemptedEventsToday = new Set();
+
+// Track events we've tried today to avoid infinite loops
+const attemptedEventsToday = new Set();
+
 /**
  * Get event for content type
  */
-async function getEventForContent(contentType, maxAttempts = 15) {
+async function getEventForContent(contentType, maxAttempts = 20) {
   let attempts = 0;
+  const today = new Date().toDateString();
+  
+  // Clear attempted events if it's a new day
+  if (!getEventForContent.lastDate || getEventForContent.lastDate !== today) {
+    attemptedEventsToday.clear();
+    getEventForContent.lastDate = today;
+  }
   
   while (attempts < maxAttempts) {
     const event = await getRandomEvent();
     const eventId = createEventId(event);
+    
+    // Skip if we've already tried this event today
+    if (attemptedEventsToday.has(eventId)) {
+      attempts++;
+      continue;
+    }
     
     const isPosted = await isEventPosted(eventId);
     const isAppropriate = await isEventAppropriate(event);
     const topicCooldown = await isTopicInCooldown(event.description);
     
     if (!isPosted && isAppropriate && !topicCooldown) {
+      // Mark as attempted
+      attemptedEventsToday.add(eventId);
       return event;
     }
     
+    // Mark as attempted even if it doesn't pass checks
+    attemptedEventsToday.add(eventId);
     attempts++;
   }
   
