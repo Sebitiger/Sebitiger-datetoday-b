@@ -26,36 +26,88 @@ export async function executeWorkflow(contentType = 'auto', options = {}) {
   
   console.log(`[Workflow] Executing ${contentType} workflow...`);
   
-  try {
-    // Get event if needed
-    let event = providedEvent;
-    if (!event && needsEvent(contentType)) {
-      event = await getEventForContent(contentType);
+  let attempts = 0;
+  const maxRetries = 5;
+  let lastError;
+  
+  while (attempts < maxRetries) {
+    try {
+      // Get event if needed
+      let event = providedEvent;
+      if (!event && needsEvent(contentType)) {
+        event = await getEventForContent(contentType);
+      }
+      
+      // Generate content
+      let content = await generateContentWithRetry(contentType, { event });
+      
+      // Check for duplicates
+      const contentText = Array.isArray(content) ? content.join(' ') : content;
+      const isDup = await isContentDuplicate(contentText, 60);
+      if (isDup) {
+        console.log(`[Workflow] Generated content is duplicate, retrying with new event... (${attempts + 1}/${maxRetries})`);
+        attempts++;
+        if (needsEvent(contentType)) {
+          // Clear event to get a new one
+          event = null;
+        }
+        continue;
+      }
+      
+      // Post with media (this may throw if media is duplicate)
+      try {
+        const tweetId = await postContentWithMedia(contentType, content, {
+          event,
+          text: contentText
+        });
+        
+        console.log(`[Workflow] ✅ Workflow completed successfully (${contentType}, ID: ${tweetId})`);
+        return tweetId;
+      } catch (mediaErr) {
+        // If media is duplicate, retry with new event
+        const isDuplicateError = mediaErr.message && (
+          mediaErr.message.includes('duplicate') || 
+          mediaErr.message.includes('Duplicate') ||
+          (mediaErr.context && mediaErr.context.isDuplicate)
+        );
+        
+        if (isDuplicateError) {
+          console.log(`[Workflow] Duplicate media detected, retrying with new event... (${attempts + 1}/${maxRetries})`);
+          attempts++;
+          if (needsEvent(contentType)) {
+            // Clear event to get a new one
+            event = null;
+          }
+          continue;
+        }
+        // If it's a different media error, throw it
+        throw mediaErr;
+      }
+      
+    } catch (err) {
+      lastError = err;
+      
+      // If it's a duplicate error, retry
+      if (err.message && (err.message.includes('duplicate') || err.message.includes('Duplicate'))) {
+        console.log(`[Workflow] Duplicate detected, retrying... (${attempts + 1}/${maxRetries})`);
+        attempts++;
+        continue;
+      }
+      
+      // If it's not a duplicate error and we've tried enough, throw
+      if (attempts >= maxRetries - 1) {
+        console.error(`[Workflow] ❌ Workflow failed (${contentType}):`, err.message);
+        throw err;
+      }
+      
+      attempts++;
+      console.warn(`[Workflow] Error occurred, retrying... (${attempts + 1}/${maxRetries}):`, err.message);
     }
-    
-    // Generate content
-    let content = await generateContentWithRetry(contentType, { event });
-    
-    // Check for duplicates
-    const contentText = Array.isArray(content) ? content.join(' ') : content;
-    const isDup = await isContentDuplicate(contentText, 60);
-    if (isDup) {
-      throw new ContentGenerationError('Generated content is duplicate', { contentType });
-    }
-    
-    // Post with media
-    const tweetId = await postContentWithMedia(contentType, content, {
-      event,
-      text: contentText
-    });
-    
-    console.log(`[Workflow] ✅ Workflow completed successfully (${contentType}, ID: ${tweetId})`);
-    return tweetId;
-    
-  } catch (err) {
-    console.error(`[Workflow] ❌ Workflow failed (${contentType}):`, err.message);
-    throw err;
   }
+  
+  // If we exhausted retries, throw last error
+  console.error(`[Workflow] ❌ Workflow failed after ${maxRetries} attempts (${contentType})`);
+  throw lastError || new ContentGenerationError('Failed to complete workflow after retries', { contentType });
 }
 
 /**

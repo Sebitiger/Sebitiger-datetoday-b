@@ -100,6 +100,7 @@ export async function postContent(contentType, content, options = {}) {
  */
 export async function postContentWithMedia(contentType, content, context = {}, options = {}) {
   const { fetchMedia } = await import("../media/MediaHandler.js");
+  const { MediaFetchError } = await import("../core/errors.js");
   
   let media = null;
   
@@ -111,6 +112,14 @@ export async function postContentWithMedia(contentType, content, context = {}, o
         text: Array.isArray(content) ? content[0] : content
       });
     } catch (err) {
+      // If it's a duplicate media error, preserve that information
+      if (err instanceof MediaFetchError && err.message.includes('duplicate')) {
+        throw new PostingError(
+          `Duplicate media detected for ${contentType}`,
+          { contentType, originalError: err.message, isDuplicate: true }
+        );
+      }
+      
       // If media is required but fetch failed, throw
       if (getContentConfig(contentType).requiresMedia) {
         throw new PostingError(
