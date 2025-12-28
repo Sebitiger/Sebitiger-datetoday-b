@@ -37,6 +37,7 @@ jobs:
       ACCESS_SECRET: ${{ secrets.ACCESS_SECRET }}
       OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
       BOT_USERNAME: ${{ secrets.BOT_USERNAME }}
+      PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
 
     steps:
       - name: Checkout repo
@@ -79,10 +80,10 @@ jobs:
           
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "Manual run → running DAILY script"
-            node runDaily.js
+            node -e "import('./daily.js').then(m => m.postDailyTweet())"
           elif [ "${{ github.event.schedule }}" = "0 9 * * *" ]; then
             echo "Cron 09:00 UTC → DAILY"
-            node runDaily.js
+            node -e "import('./daily.js').then(m => m.postDailyTweet())"
           elif [ "${{ github.event.schedule }}" = "0 10 * * *" ]; then
             echo "Cron 10:00 UTC → QUICK FACT"
             node -e "import('./viralContent.js').then(m => m.postQuickFact())"
@@ -130,7 +131,7 @@ jobs:
             node -e "import('./viralContent.js').then(m => m.postQuickFact())"
           elif [ "${{ github.event.schedule }}" = "0 16 * * 0" ]; then
             echo "Cron Sunday 16:00 → WEEKLY THREAD"
-            node runWeekly.js
+            node -e "import('./src/index.js').then(m => m.postWeeklyThread())"
           elif [ "${{ github.event.schedule }}" = "0 16 * * 1,2,3,4,5,6" ]; then
             echo "Cron 16:00 UTC → QUICK FACT"
             node -e "import('./viralContent.js').then(m => m.postQuickFact())"
@@ -139,7 +140,7 @@ jobs:
             node -e "import('./viralContent.js').then(m => m.postQuickFact())"
           elif [ "${{ github.event.schedule }}" = "0 18 * * *" ]; then
             echo "Cron 18:00 UTC → EVENING"
-            node runEvening.js
+            node -e "import('./evening.js').then(m => m.postEveningFact())"
           elif [ "${{ github.event.schedule }}" = "0 19 * * *" ]; then
             echo "Cron 19:00 UTC → QUICK FACT"
             node -e "import('./viralContent.js').then(m => m.postQuickFact())"
@@ -148,5 +149,25 @@ jobs:
             node -e "import('./viralContent.js').then(m => m.postQuickFact())"
           else
             echo "Unknown trigger – defaulting to DAILY"
-            node runDaily.js
+            node -e "import('./daily.js').then(m => m.postDailyTweet())"
+          fi
+
+      - name: Commit bot state (data JSON)
+        if: success()
+        run: |
+          # If we are using a subfolder, move into it before committing
+          if [ "${{ steps.check_location.outputs.location }}" = "subfolder" ]; then
+            cd datetoday-bot-main
+          fi
+
+          echo "Checking for state changes in data/*.json..."
+          if git status --porcelain data 2>/dev/null | grep .; then
+            echo "State files changed, committing..."
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add data/*.json || true
+            git commit -m "Update DateToday bot state [skip ci]" || echo "No changes to commit"
+            git push
+          else
+            echo "No state changes to commit."
           fi
