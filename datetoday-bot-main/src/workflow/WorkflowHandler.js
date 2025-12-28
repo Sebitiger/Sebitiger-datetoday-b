@@ -160,9 +160,6 @@ async function generateContentWithRetry(contentType, context, maxRetries = 5) {
 // Track events we've tried today to avoid infinite loops
 const attemptedEventsToday = new Set();
 
-// Track events we've tried today to avoid infinite loops
-const attemptedEventsToday = new Set();
-
 /**
  * Get event for content type
  */
