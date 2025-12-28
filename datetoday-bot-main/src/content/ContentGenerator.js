@@ -138,38 +138,40 @@ function buildDailyPrompt(event) {
   const format = selectTweetFormat();
   
   const formatPrompts = {
-    surprising_fact: `Create a VIRAL tweet that starts with a powerful hook about this historical event.
+    surprising_fact: `Create a VIRAL tweet that makes people stop scrolling and share immediately.
 
 Event: ${description}
 Year: ${year}
 Date: ${monthName} ${day}
 
-CRITICAL: 
-1. The first 3 words determine if people keep reading. Make them count.
-2. You MUST include what actually happened - don't just hint at it.
-3. Complete your thought - never end with "..." or cut off mid-sentence.
+CRITICAL FOR VIRALITY:
+1. First 3 words = hook that makes people stop. Use surprising/controversial angle.
+2. Challenge assumptions: "Everyone thinks X, but actually Y..."
+3. Include what happened - be specific with surprising details
+4. End with something that makes people want to reply or share
+5. Complete your thought - never end with "..." or cut off mid-sentence
 
-Hook Options (pick the strongest):
-- "Did you know..." (classic, works)
-- "This is wild:" (attention-grabbing)
-- "Wait until you hear..." (creates curiosity)
-- "You won't believe..." (shareable)
-- "${monthName} ${day}, ${year}:" (direct)
+VIRAL HOOK OPTIONS (pick the strongest):
+- "Everyone thinks [common belief], but actually [surprising truth]"
+- "This is the story you didn't learn in school..."
+- "You won't believe what happened on ${monthName} ${day}, ${year}:"
+- "This changes everything you thought you knew about [topic]"
+- "${monthName} ${day}, ${year}: [Surprising fact that challenges assumptions]"
 
 Format:
-- Start with a STRONG hook (first 3 words are critical)
-- Include the date naturally: ${monthName} ${day}, ${year}
-- State what actually happened - be specific, not vague
-- Make it shareable - something people will want to retweet
-- Add a surprising detail or connection
+- Start with STRONG hook that challenges assumptions or reveals surprising truth
+- Include date: ${monthName} ${day}, ${year}
+- State what happened with specific, surprising details
+- Add a detail that makes it shareable (connection to today, surprising consequence, etc.)
+- End with hook that invites engagement (question, thought-provoking statement, or "this is why...")
 - Under 140 characters TOTAL
-- Use 1 emoji if it adds emotion (not required)
-- Be conversational, not academic
-- NEVER use em dashes (—) – use commas, periods, or regular hyphens instead
+- Use 1 emoji strategically if it adds emphasis
+- Be conversational and engaging
+- NEVER use em dashes (—) – use commas, periods, or regular hyphens
 - NEVER end with "..." - always complete the sentence
 
 Example structure:
-"Did you know on ${monthName} ${day}, ${year}, [what actually happened]? [Surprising detail]. [Why it matters]."`,
+"Everyone thinks [common belief], but on ${monthName} ${day}, ${year}, [surprising truth]. [Why this matters/connects to today]."`,
 
     human_story: `Tell a COMPELLING human story that makes people feel something. Focus on the people, their emotions, their decisions.
 
@@ -222,27 +224,33 @@ Format:
 Example structure:
 "${monthName} ${day}, ${year}: [What happened]. [What changed]. [Why it mattered]."`,
 
-    relatable_connection: `Create a SHAREABLE tweet that connects this historical event to something people experience TODAY.
+    relatable_connection: `Create a VIRAL tweet that connects this historical event to something people experience TODAY.
 
 Event: ${description}
 Year: ${year}
 Date: ${monthName} ${day}
 
-CRITICAL: Connections to today make content shareable. Make it relevant.
+CRITICAL FOR VIRALITY:
+1. Connections to today make content EXTREMELY shareable
+2. Make the parallel obvious and surprising
+3. Use specific examples people can relate to
+4. End with insight that makes people think "this is so true"
 
 Format:
-- Start with a hook: "${year}: [Event]. [Modern year]: [Parallel]" or "History is repeating itself..."
-- Include the date naturally: ${monthName} ${day}, ${year}
-- Show the connection clearly - make it obvious why this matters today
-- Use parallel structure or comparison
-- Make it relatable - "This is exactly like..." or "We're seeing this again..."
-- Under 140 characters
-- Use 1 emoji if it helps the connection
+- Start with STRONG hook: "${year}: [Event]. 2024: [Surprising parallel]" or "History is repeating itself..."
+- Include date: ${monthName} ${day}, ${year}
+- Show clear, surprising connection - make it obvious and relatable
+- Use parallel structure for impact
+- Make it specific - not vague ("This is like..." → "This is exactly like [specific modern situation]")
+- End with insight that makes people want to share
+- Under 140 characters TOTAL
+- Use 1 emoji if it emphasizes the connection
 - Be conversational and relatable
-- NEVER use em dashes (—) – use commas, periods, or regular hyphens instead
+- NEVER use em dashes (—) – use commas, periods, or regular hyphens
+- NEVER end with "..." - always complete the sentence
 
 Example structure:
-"${year}: [Event]. 2024: [Modern parallel]. History doesn't repeat, but it rhymes. ${monthName} ${day} reminds us [insight]."`,
+"${year}: [Event]. 2024: [Surprising modern parallel]. History doesn't repeat, but it rhymes. ${monthName} ${day} shows us [insight]."`,
 
     dramatic_scene: `Paint a vivid scene BUT always include what actually happened. Don't just describe - tell the story.
 
@@ -266,33 +274,38 @@ Format:
 Example structure:
 "${monthName} ${day}, ${year}: [Brief scene description]. [What actually happened - the historical fact]."`,
 
-    question_hook: `Create an ENGAGING tweet that starts with a question hook that makes people want to reply.
+    question_hook: `Create a tweet with a question hook that SPARKS DISCUSSION and gets replies.
 
 Event: ${description}
 Year: ${year}
 Date: ${monthName} ${day}
 
-CRITICAL: Questions that spark discussion get more engagement. Make it thought-provoking.
+CRITICAL FOR ENGAGEMENT:
+1. Questions that make people want to reply get algorithm boost
+2. Make it thought-provoking, not obvious
+3. Challenge assumptions or reveal surprising angle
+4. End with something that invites discussion
 
-Question Hook Options:
-- "What if..." (alternate history)
-- "Why did..." (makes people think)
-- "How did..." (creates curiosity)
-- "What happened when..." (story hook)
-- "What would you have done if..." (personal connection)
+QUESTION HOOK OPTIONS (pick the strongest):
+- "What if [event] had gone differently? Everything changes..."
+- "Why did [person/group] do [action]? The real reason will surprise you."
+- "What would you have done? On ${monthName} ${day}, ${year}, [person] faced [dilemma]..."
+- "How did [seemingly impossible thing] happen? ${monthName} ${day}, ${year} reveals the answer."
+- "What's the story behind [famous event]? It's wilder than you think."
 
 Format:
-- Start with a STRONG question hook
-- Include the date naturally: ${monthName} ${day}, ${year}
-- Reveal the answer or key fact
-- End with something that makes people want to reply or share
-- Under 140 characters
-- Use 1 emoji if it adds to the question
+- Start with STRONG question that makes people curious
+- Include date: ${monthName} ${day}, ${year}
+- Reveal surprising answer or key fact
+- End with hook that invites replies (question, "what do you think?", or thought-provoking statement)
+- Under 140 characters TOTAL
+- Use 1 emoji if it adds to engagement
 - Be conversational and thought-provoking
-- NEVER use em dashes (—) – use commas, periods, or regular hyphens instead
+- NEVER use em dashes (—) – use commas, periods, or regular hyphens
+- NEVER end with "..." - always complete the sentence
 
 Example structure:
-"What if [event] had never happened? ${monthName} ${day}, ${year} changed everything when [key detail]. [Thought-provoking conclusion]."`,
+"What if [event] had never happened? ${monthName} ${day}, ${year} changed everything. [Surprising detail]. What do you think would be different today?"`,
 
     simple_statement: `Make a direct, powerful statement about this event.
 
