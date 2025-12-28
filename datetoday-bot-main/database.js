@@ -338,17 +338,19 @@ export async function isContentDuplicate(text, daysToCheck = 60) {
     // If enough meaningful key terms match, it's likely the same event/topic
     const termMatchRatio = totalUniqueTerms > 0 ? meaningfulMatchingTerms.length / totalUniqueTerms : 0;
     
-    // Require at least 3 meaningful matching terms AND higher similarity for same event detection
+    // Require at least 4 meaningful matching terms AND higher similarity (40%+) for same event detection
     // This allows different angles on the same event (e.g., different hooks, different perspectives)
     // Only flag as duplicate if it's clearly the same content, not just the same event
-    if (meaningfulMatchingTerms.length >= 3 && similarity > 0.25) {
+    // This is more lenient to allow creative variations on the same historical event
+    if (meaningfulMatchingTerms.length >= 4 && similarity > 0.40) {
       console.log(`[Database] Duplicate detected: Same historical event (${meaningfulMatchingTerms.length} meaningful matching terms: ${meaningfulMatchingTerms.join(', ')}, ratio: ${termMatchRatio.toFixed(2)}, similarity: ${similarity.toFixed(2)})`);
       return true;
     }
     
-    // If we have many matching terms (5+) even with lower similarity, it's likely duplicate
-    if (meaningfulMatchingTerms.length >= 5) {
-      console.log(`[Database] Duplicate detected: Many matching terms (${meaningfulMatchingTerms.length} meaningful matching terms: ${meaningfulMatchingTerms.join(', ')})`);
+    // If we have many matching terms (6+) even with lower similarity, it's likely duplicate
+    // But allow if similarity is very low (different angle on same event)
+    if (meaningfulMatchingTerms.length >= 6 && similarity > 0.30) {
+      console.log(`[Database] Duplicate detected: Many matching terms (${meaningfulMatchingTerms.length} meaningful matching terms: ${meaningfulMatchingTerms.join(', ')}, similarity: ${similarity.toFixed(2)})`);
       return true;
     }
     

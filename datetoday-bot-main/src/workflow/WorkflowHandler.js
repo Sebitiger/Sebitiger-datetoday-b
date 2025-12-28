@@ -163,7 +163,7 @@ const attemptedEventsToday = new Set();
 /**
  * Get event for content type
  */
-async function getEventForContent(contentType, maxAttempts = 20) {
+async function getEventForContent(contentType, maxAttempts = 30) {
   let attempts = 0;
   const today = new Date().toDateString();
   
@@ -173,12 +173,25 @@ async function getEventForContent(contentType, maxAttempts = 20) {
     getEventForContent.lastDate = today;
   }
   
+  // Track how many times we've seen each event
+  const eventAttemptCounts = new Map();
+  
   while (attempts < maxAttempts) {
     const event = await getRandomEvent();
     const eventId = createEventId(event);
     
-    // Skip if we've already tried this event today
-    if (attemptedEventsToday.has(eventId)) {
+    // Count attempts for this event
+    const attemptCount = (eventAttemptCounts.get(eventId) || 0) + 1;
+    eventAttemptCounts.set(eventId, attemptCount);
+    
+    // If we've tried this event too many times (5+), skip it
+    if (attemptCount > 5) {
+      attempts++;
+      continue;
+    }
+    
+    // Skip if we've already successfully tried this event today (but allow retries for duplicates)
+    if (attemptedEventsToday.has(eventId) && attemptCount === 1) {
       attempts++;
       continue;
     }
@@ -188,14 +201,45 @@ async function getEventForContent(contentType, maxAttempts = 20) {
     const topicCooldown = await isTopicInCooldown(event.description);
     
     if (!isPosted && isAppropriate && !topicCooldown) {
-      // Mark as attempted
+      // Mark as attempted (but allow retrying if content is duplicate)
       attemptedEventsToday.add(eventId);
       return event;
     }
     
-    // Mark as attempted even if it doesn't pass checks
-    attemptedEventsToday.add(eventId);
+    // If event is posted or inappropriate, mark as attempted and skip
+    if (isPosted || !isAppropriate || topicCooldown) {
+      attemptedEventsToday.add(eventId);
+      attempts++;
+      continue;
+    }
+    
     attempts++;
+  }
+  
+  // If we've exhausted all attempts, allow using an event we've tried if content will be different
+  // This handles cases where only one event is available but we can create different content
+  console.warn(`[Workflow] Exhausted ${maxAttempts} attempts, allowing event reuse with different content angle`);
+  
+  // Get the most attempted event (likely the only one available)
+  let mostAttemptedEventId = null;
+  let maxAttemptCount = 0;
+  for (const [eventId, count] of eventAttemptCounts.entries()) {
+    if (count > maxAttemptCount) {
+      maxAttemptCount = count;
+      mostAttemptedEventId = eventId;
+    }
+  }
+  
+  // Try one more time - if content generation creates different content, it should work
+  const finalEvent = await getRandomEvent();
+  const finalEventId = createEventId(finalEvent);
+  const isPosted = await isEventPosted(finalEventId);
+  const isAppropriate = await isEventAppropriate(finalEvent);
+  const topicCooldown = await isTopicInCooldown(finalEvent.description);
+  
+  // Allow it if it's appropriate (even if we've tried it) - duplicate detection will catch actual duplicates
+  if (isAppropriate && !topicCooldown && !isPosted) {
+    return finalEvent;
   }
   
   throw new Error('Failed to find appropriate event after multiple attempts');
