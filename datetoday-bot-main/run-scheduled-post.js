@@ -74,11 +74,12 @@ async function postVerifiedTweet(jobName, contentType = "single") {
           
           // Only add image to first tweet if we have one
           if (i === 0 && imageBuffer) {
+            const mediaId = await twitterClient.v1.uploadMedia(imageBuffer, {
+              mimeType: 'image/jpeg'
+            });
             const tweetResponse = await twitterClient.v2.tweet({
               text: tweetText,
-              media: { 
-                media_ids: [await twitterClient.v1.uploadMedia(imageBuffer)] 
-              }
+              media: { media_ids: [mediaId] }
             });
             previousTweetId = tweetResponse.data.id;
           } else {
@@ -96,8 +97,10 @@ async function postVerifiedTweet(jobName, contentType = "single") {
       } else {
         // Single tweet with image
         if (imageBuffer) {
-          // Upload image first
-          const mediaId = await twitterClient.v1.uploadMedia(imageBuffer);
+          // Upload image first with proper type
+          const mediaId = await twitterClient.v1.uploadMedia(imageBuffer, { 
+            mimeType: 'image/jpeg'
+          });
           
           // Post with image
           const tweetResponse = await twitterClient.v2.tweet({
