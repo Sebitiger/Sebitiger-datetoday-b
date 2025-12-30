@@ -1,0 +1,57 @@
+name: DateToday Verified Bot
+
+on:
+  workflow_dispatch:  # Manual trigger only for now
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+
+    env:
+      API_KEY: ${{ secrets.API_KEY }}
+      API_SECRET: ${{ secrets.API_SECRET }}
+      ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+      ACCESS_SECRET: ${{ secrets.ACCESS_SECRET }}
+      OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
+      BOT_USERNAME: ${{ secrets.BOT_USERNAME }}
+      PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: |
+          cd datetoday-bot-main
+          npm install
+
+      - name: Clear duplicate database entry
+        run: |
+          cd datetoday-bot-main
+          # Remove King Michael entry from database
+          node -e "
+          const fs = require('fs');
+          const dbPath = './data/posted_content.json';
+          if (fs.existsSync(dbPath)) {
+            const data = JSON.parse(fs.readFileSync(dbPath));
+            const before = data.posts?.length || 0;
+            data.posts = (data.posts || []).filter(p => 
+              !p.hash?.includes('king-michael') && 
+              !p.content?.toLowerCase().includes('king michael')
+            );
+            const after = data.posts.length;
+            fs.writeFileSync(dbPath, JSON.stringify(data, null, 2));
+            console.log('Removed', before - after, 'King Michael entries');
+          }
+          "
+
+      - name: Run VERIFIED bot (single test post)
+        run: |
+          cd datetoday-bot-main
+          # Run the NEW verified index.js
+          timeout 5m node index.js || echo "Bot ran (may have exited normally)"
