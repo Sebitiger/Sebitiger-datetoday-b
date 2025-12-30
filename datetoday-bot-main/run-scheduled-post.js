@@ -27,14 +27,14 @@ async function postVerifiedTweet(jobName, contentType = "single") {
     
     const result = contentType === "thread" 
       ? await generateVerifiedThread(event, {
-          targetConfidence: 95,
-          minConfidence: 90,
+          targetConfidence: 90,
+          minConfidence: 85,
           maxAttempts: 3,
           queueMedium: true
         })
       : await generateVerifiedTweet(event, {
-          targetConfidence: 95,
-          minConfidence: 90,
+          targetConfidence: 90,
+          minConfidence: 85,
           maxAttempts: 3,
           queueMedium: true
         });
