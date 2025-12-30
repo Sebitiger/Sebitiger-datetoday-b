@@ -1,7 +1,7 @@
 import dotenv from "dotenv";
 import { generateVerifiedTweet } from "./verification/verifiedGenerator.js";
 import { getRandomEvent } from "./fetchEvents.js";
-import { twitterClient } from "./twitterClient.js";
+import { client as twitterClient } from "./twitterClient.js";
 
 dotenv.config();
 
