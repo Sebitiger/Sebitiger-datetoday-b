@@ -1,15 +1,12 @@
 import cron from "node-cron";
 import dotenv from "dotenv";
-import { postDailyTweet } from "./daily.js";
-import { postEveningFact } from "./evening.js";
-import { postWeeklyThread } from "./weekly.js";
-import { monitorMentions } from "./engagement.js";
-import { postPoll } from "./polls.js";
-import { postWhatIfThread, postHiddenConnection, postQuickFact, postHistoryDebunk } from "./viralContent.js";
-import { monitorBigAccounts } from "./bigAccountReplies.js";
+import { generateVerifiedTweet, generateVerifiedThread } from "./verification/verifiedGenerator.js";
+import { getRandomEvent } from "./fetchEvents.js";
+import { client as twitterClient } from "./twitterClient.js";
 import { info, error, warn } from "./logger.js";
 import { runHealthChecks } from "./health.js";
 import { cleanOldLogs } from "./logger.js";
+import { getQueueStats } from "./verification/reviewQueue.js";
 
 dotenv.config();
 
@@ -23,7 +20,9 @@ function requireEnv(name) {
 // Ensure required credentials exist
 ["API_KEY", "API_SECRET", "ACCESS_TOKEN", "ACCESS_SECRET", "OPENAI_KEY"].forEach(requireEnv);
 
-info("[DateToday] Bot starting...");
+info("[DateToday] 🚀 Bot starting with FULL VERIFICATION");
+info("[DateToday] ✅ All posts fact-checked before posting");
+info("[DateToday] 📊 Optimized schedule: 6 posts/day for max engagement");
 
 // Enhanced global error logging
 process.on("unhandledRejection", (reason) => {
@@ -50,240 +49,170 @@ cron.schedule("0 * * * *", async () => {
   await runHealthChecks();
 }, { timezone: "UTC" });
 
-// Cron expressions are evaluated in UTC by default.
-// 09:00 UTC - main On This Day tweet
+// VERIFIED POSTING FUNCTION
+async function postVerifiedTweet(jobName, contentType = "single") {
+  console.log(`[Verified] 🎯 Starting ${jobName}...`);
+  
+  try {
+    const event = await getRandomEvent();
+    
+    // Generate with verification
+    const result = contentType === "thread" 
+      ? await generateVerifiedThread(event, {
+          minConfidence: 90,
+          maxRetries: 3,
+          queueMedium: true
+        })
+      : await generateVerifiedTweet(event, {
+          minConfidence: 90,
+          maxRetries: 3,
+          queueMedium: true
+        });
+    
+    if (result.status === 'APPROVED') {
+      // HIGH CONFIDENCE - Post it!
+      info(`[Verified] ✅ ${jobName} APPROVED (${result.verification.confidence}% confidence)`);
+      
+      if (contentType === "thread") {
+        // Post as thread
+        const tweets = result.content.split('\n\n').filter(t => t.trim());
+        let previousTweetId = null;
+        
+        for (const tweet of tweets) {
+          const tweetText = tweet.replace(/^\d+\.\s*/, ''); // Remove numbering
+          const tweetResponse = await twitterClient.v2.tweet({
+            text: tweetText,
+            reply: previousTweetId ? { in_reply_to_tweet_id: previousTweetId } : undefined
+          });
+          previousTweetId = tweetResponse.data.id;
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s between tweets
+        }
+        
+        info(`[Verified] 📱 Posted verified thread with ${tweets.length} tweets`);
+      } else {
+        // Post single tweet
+        const tweetResponse = await twitterClient.v2.tweet(result.content);
+        info(`[Verified] 📱 Posted verified tweet: ${tweetResponse.data.id}`);
+      }
+      
+      return true;
+    } else if (result.status === 'QUEUED') {
+      // MEDIUM CONFIDENCE - Queued for review
+      warn(`[Verified] ⚠️  ${jobName} QUEUED (${result.verification.confidence}% confidence)`);
+      warn(`[Verified] 📝 Queue ID: ${result.queueId}`);
+      warn(`[Verified] 👉 Review: node verification/reviewCLI.js show ${result.queueId}`);
+      
+      return false;
+    } else {
+      // REJECTED
+      error(`[Verified] ❌ ${jobName} REJECTED (${result.verification.confidence}% confidence)`);
+      if (result.verification.concerns) {
+        error(`[Verified] ⚠️  Concerns: ${result.verification.concerns.join(', ')}`);
+      }
+      
+      return false;
+    }
+  } catch (err) {
+    error(`[Verified] 💥 ${jobName} failed:`, err.message || err);
+    return false;
+  }
+}
+
+// Display queue stats at startup
+(async () => {
+  try {
+    const stats = await getQueueStats();
+    info(`[Verification] 📊 Queue: ${stats.pending} pending | ${stats.approved} approved | ${stats.rejected} rejected`);
+  } catch (err) {
+    warn("[Verification] Could not load queue stats:", err.message);
+  }
+})();
+
+// ============================================================
+// OPTIMIZED POSTING SCHEDULE (6 posts/day for max engagement)
+// ============================================================
+
+// 09:00 UTC - Main daily tweet (VERIFIED)
 cron.schedule("0 9 * * *", async () => {
-  console.log("[Cron] Running daily On This Day job (09:00 UTC)");
-  try {
-    await postDailyTweet();
-  } catch (err) {
-    console.error("[Cron] Daily job failed:", err.message || err);
-  }
+  info("[Schedule] 🌅 09:00 UTC - Daily Main Tweet");
+  await postVerifiedTweet("Daily Main Tweet");
 }, { timezone: "UTC" });
 
-// 10:00 UTC - Quick Fact (hourly posting)
-cron.schedule("0 10 * * *", async () => {
-  console.log("[Cron] Running Quick Fact job (10:00 UTC)");
-  try {
-    await postQuickFact();
-  } catch (err) {
-    console.error("[Cron] Quick Fact job failed:", err.message || err);
-  }
+// 12:00 UTC - Mid-day fact (VERIFIED)
+cron.schedule("0 12 * * *", async () => {
+  info("[Schedule] ☀️  12:00 UTC - Mid-day Fact");
+  await postVerifiedTweet("Mid-day Fact");
 }, { timezone: "UTC" });
 
-// 11:00 UTC - Quick Fact (hourly posting)
-cron.schedule("0 11 * * *", async () => {
-  console.log("[Cron] Running Quick Fact job (11:00 UTC)");
-  try {
-    await postQuickFact();
-  } catch (err) {
-    console.error("[Cron] Quick Fact job failed:", err.message || err);
-  }
-}, { timezone: "UTC" });
-
-// 13:00 UTC - Quick Fact (hourly posting)
-cron.schedule("0 13 * * *", async () => {
-  console.log("[Cron] Running Quick Fact job (13:00 UTC)");
-  try {
-    await postQuickFact();
-  } catch (err) {
-    console.error("[Cron] Quick Fact job failed:", err.message || err);
-  }
-}, { timezone: "UTC" });
-
-// 15:00 UTC - Quick Fact (or special content on certain days)
+// 15:00 UTC - Afternoon fact (VERIFIED)
 cron.schedule("0 15 * * *", async () => {
-  console.log("[Cron] Running Quick Fact job (15:00 UTC)");
-  try {
-    await postQuickFact();
-  } catch (err) {
-    console.error("[Cron] Quick Fact job failed:", err.message || err);
-  }
+  info("[Schedule] 🌤  15:00 UTC - Afternoon Fact");
+  await postVerifiedTweet("Afternoon Fact");
 }, { timezone: "UTC" });
 
-// 16:00 UTC - Quick Fact (hourly posting)
-cron.schedule("0 16 * * *", async () => {
-  console.log("[Cron] Running Quick Fact job (16:00 UTC)");
-  try {
-    await postQuickFact();
-  } catch (err) {
-    console.error("[Cron] Quick Fact job failed:", err.message || err);
-  }
-}, { timezone: "UTC" });
-
-// 17:00 UTC - Quick Fact (hourly posting)
-cron.schedule("0 17 * * *", async () => {
-  console.log("[Cron] Running Quick Fact job (17:00 UTC)");
-  try {
-    await postQuickFact();
-  } catch (err) {
-    console.error("[Cron] Quick Fact job failed:", err.message || err);
-  }
-}, { timezone: "UTC" });
-
-// 18:00 UTC - evening extra fact
+// 18:00 UTC - Evening fact (VERIFIED)
 cron.schedule("0 18 * * *", async () => {
-  console.log("[Cron] Running evening fact job (18:00 UTC)");
-  try {
-    await postEveningFact();
-  } catch (err) {
-    console.error("[Cron] Evening job failed:", err.message || err);
-  }
+  info("[Schedule] 🌆 18:00 UTC - Evening Fact");
+  await postVerifiedTweet("Evening Fact");
 }, { timezone: "UTC" });
 
-// 19:00 UTC - Quick Fact (hourly posting)
-cron.schedule("0 19 * * *", async () => {
-  console.log("[Cron] Running Quick Fact job (19:00 UTC)");
-  try {
-    await postQuickFact();
-  } catch (err) {
-    console.error("[Cron] Quick Fact job failed:", err.message || err);
-  }
+// 21:00 UTC - Night fact (VERIFIED)
+cron.schedule("0 21 * * *", async () => {
+  info("[Schedule] 🌙 21:00 UTC - Night Fact");
+  await postVerifiedTweet("Night Fact");
 }, { timezone: "UTC" });
 
-// 20:00 UTC - Quick Fact (hourly posting)
-cron.schedule("0 20 * * *", async () => {
-  console.log("[Cron] Running Quick Fact job (20:00 UTC)");
-  try {
-    await postQuickFact();
-  } catch (err) {
-    console.error("[Cron] Quick Fact job failed:", err.message || err);
-  }
-}, { timezone: "UTC" });
-
-// Sunday 16:00 UTC - weekly deep dive thread (replaces 16:00 Quick Fact on Sunday)
+// Sunday 16:00 UTC - Weekly deep dive thread (VERIFIED)
 cron.schedule("0 16 * * 0", async () => {
-  console.log("[Cron] Running weekly thread job (Sunday 16:00 UTC)");
-  try {
-    await postWeeklyThread();
-  } catch (err) {
-    console.error("[Cron] Weekly job failed:", err.message || err);
-  }
+  info("[Schedule] 📚 Sunday 16:00 UTC - Weekly Deep Dive Thread");
+  await postVerifiedTweet("Weekly Deep Dive Thread", "thread");
 }, { timezone: "UTC" });
 
-// Tuesday & Thursday 14:00 UTC - interactive polls (replaces 15:00 Quick Fact on those days)
-cron.schedule("0 14 * * 2,4", async () => {
-  console.log("[Cron] Running poll job (Tuesday/Thursday 14:00 UTC)");
-  try {
-    await postPoll();
-  } catch (err) {
-    console.error("[Cron] Poll job failed:", err.message || err);
-  }
-}, { timezone: "UTC" });
+// ============================================================
+// SPECIAL CONTENT (Replaces regular posts on specific days)
+// ============================================================
 
-// Wednesday 12:00 UTC - "What If" viral thread
-cron.schedule("0 12 * * 3", async () => {
-  console.log("[Cron] Running What If thread job (Wednesday 12:00 UTC)");
-  try {
-    await postWhatIfThread();
-  } catch (err) {
-    console.error("[Cron] What If job failed:", err.message || err);
-  }
-}, { timezone: "UTC" });
-
-// Friday 15:00 UTC - Hidden Connections (replaces 15:00 Quick Fact on Friday)
-cron.schedule("0 15 * * 5", async () => {
-  console.log("[Cron] Running Hidden Connection job (Friday 15:00 UTC)");
-  try {
-    await postHiddenConnection();
-  } catch (err) {
-    console.error("[Cron] Hidden Connection job failed:", err.message || err);
-  }
-}, { timezone: "UTC" });
-
-// Monday 12:00 UTC - Quick Fact (shareable, viral)
-cron.schedule("0 12 * * 1", async () => {
-  console.log("[Cron] Running Quick Fact job (Monday 12:00 UTC)");
-  try {
-    await postQuickFact();
-  } catch (err) {
-    console.error("[Cron] Quick Fact job failed:", err.message || err);
-  }
-}, { timezone: "UTC" });
-
-// Monday 15:00 UTC - History Debunk (replaces 15:00 Quick Fact on Monday)
+// Monday 15:00 UTC - Myth-Busting Monday (replaces afternoon fact)
 cron.schedule("0 15 * * 1", async () => {
-  console.log("[Cron] Running History Debunk job (Monday 15:00 UTC)");
+  info("[Schedule] 🔍 Monday 15:00 UTC - Myth-Busting Monday");
+  await postVerifiedTweet("Myth-Busting Monday");
+}, { timezone: "UTC" });
+
+// Wednesday 12:00 UTC - Pattern Recognition (replaces mid-day fact)
+cron.schedule("0 12 * * 3", async () => {
+  info("[Schedule] 🔄 Wednesday 12:00 UTC - Pattern Recognition");
+  await postVerifiedTweet("Pattern Recognition Wednesday");
+}, { timezone: "UTC" });
+
+// Friday 15:00 UTC - Timeline Twist (replaces afternoon fact)
+cron.schedule("0 15 * * 5", async () => {
+  info("[Schedule] ⏰ Friday 15:00 UTC - Timeline Twist");
+  await postVerifiedTweet("Timeline Twist Friday");
+}, { timezone: "UTC" });
+
+// ============================================================
+// MONITORING & MAINTENANCE
+// ============================================================
+
+// Daily queue stats report (06:00 UTC)
+cron.schedule("0 6 * * *", async () => {
   try {
-    await postHistoryDebunk();
+    const stats = await getQueueStats();
+    info(`[Verification] 📊 Daily Report: ${stats.pending} pending | ${stats.approved} approved | ${stats.posted} posted | ${stats.rejected} rejected`);
+    
+    if (stats.pending > 10) {
+      warn(`[Verification] ⚠️  Queue has ${stats.pending} items - review soon!`);
+      warn(`[Verification] 👉 Command: node verification/reviewCLI.js list`);
+    }
   } catch (err) {
-    console.error("[Cron] History Debunk job failed:", err.message || err);
+    error("[Verification] Stats report failed:", err.message);
   }
 }, { timezone: "UTC" });
 
-// Tuesday 12:00 UTC - Quick Fact (mid-week boost)
-cron.schedule("0 12 * * 2", async () => {
-  console.log("[Cron] Running Quick Fact job (Tuesday 12:00 UTC)");
-  try {
-    await postQuickFact();
-  } catch (err) {
-    console.error("[Cron] Quick Fact job failed:", err.message || err);
-  }
-}, { timezone: "UTC" });
-
-// Thursday 12:00 UTC - Quick Fact (mid-week boost)
-cron.schedule("0 12 * * 4", async () => {
-  console.log("[Cron] Running Quick Fact job (Thursday 12:00 UTC)");
-  try {
-    await postQuickFact();
-  } catch (err) {
-    console.error("[Cron] Quick Fact job failed:", err.message || err);
-  }
-}, { timezone: "UTC" });
-
-// Friday 12:00 UTC - Quick Fact (end of week)
-cron.schedule("0 12 * * 5", async () => {
-  console.log("[Cron] Running Quick Fact job (Friday 12:00 UTC)");
-  try {
-    await postQuickFact();
-  } catch (err) {
-    console.error("[Cron] Quick Fact job failed:", err.message || err);
-  }
-}, { timezone: "UTC" });
-
-// Saturday 12:00 UTC - Quick Fact (weekend engagement)
-cron.schedule("0 12 * * 6", async () => {
-  console.log("[Cron] Running Quick Fact job (Saturday 12:00 UTC)");
-  try {
-    await postQuickFact();
-  } catch (err) {
-    console.error("[Cron] Quick Fact job failed:", err.message || err);
-  }
-}, { timezone: "UTC" });
-
-// Sunday 12:00 UTC - Quick Fact (weekend engagement)
-cron.schedule("0 12 * * 0", async () => {
-  console.log("[Cron] Running Quick Fact job (Sunday 12:00 UTC)");
-  try {
-    await postQuickFact();
-  } catch (err) {
-    console.error("[Cron] Quick Fact job failed:", err.message || err);
-  }
-}, { timezone: "UTC" });
-
-// Every 15 minutes - check for mentions and engage
-cron.schedule("*/15 * * * *", async () => {
-  console.log("[Cron] Checking for mentions...");
-  try {
-    await monitorMentions();
-  } catch (err) {
-    console.error("[Cron] Mention monitoring failed:", err.message || err);
-  }
-}, { timezone: "UTC" });
-
-// Every 2 hours - monitor big history accounts and reply strategically
-cron.schedule("0 */2 * * *", async () => {
-  console.log("[Cron] Monitoring big history accounts...");
-  try {
-    await monitorBigAccounts();
-  } catch (err) {
-    console.error("[Cron] Big account monitoring failed:", err.message || err);
-  }
-}, { timezone: "UTC" });
-
-info("[DateToday] Schedules registered. Bot is now waiting for cron triggers.");
-info("[DateToday] Engagement system active - monitoring mentions every 15 minutes.");
-info("[DateToday] Big account monitoring active - checking every 2 hours.");
-info("[DateToday] Health monitoring active - checks every hour.");
-info("[DateToday] Analytics tracking enabled.");
-info("[DateToday] Content moderation enabled.");
+info("[DateToday] ✅ Verified schedules registered!");
+info("[DateToday] 📅 Daily posts: 09:00, 12:00, 15:00, 18:00, 21:00 UTC");
+info("[DateToday] 🎯 Sunday: Deep dive thread at 16:00 UTC");
+info("[DateToday] 🔍 Special: Mon/Wed/Fri themed posts");
+info("[DateToday] 📊 All posts fact-checked (90%+ auto-posts)");
+info("[DateToday] ⚠️  Medium confidence (70-89%) queued for review");
+info("[DateToday] 👉 Review queue: node verification/reviewCLI.js list");

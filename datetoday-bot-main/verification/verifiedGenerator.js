@@ -1,26 +1,67 @@
 /**
- * VERIFIED CONTENT GENERATOR
+ * VERIFIED CONTENT GENERATOR - WITH DISTINCTIVE VOICE
  * 
  * Generates content with built-in fact-checking and verification.
- * Integrates with the review queue system for quality control.
+ * Updated with deadpan, pattern-seeking voice that makes history memorable.
  */
 
 import { openai, SYSTEM_PROMPT } from '../openaiCommon.js';
 import { verifyAndDecide } from './factChecker.js';
 import { addToQueue } from './reviewQueue.js';
 
+// DISTINCTIVE VOICE GUIDELINES
+const VOICE_SYSTEM_PROMPT = `You are a historian with a distinctive, memorable voice:
+
+VOICE CHARACTERISTICS:
+- Deadpan, not enthusiastic
+- Surprising, not obvious  
+- Concise, not wordy
+- Pattern-seeking, not just facts
+- NO hashtags, NO emojis, NO exclamation marks (unless absolutely essential)
+
+STRUCTURE:
+- Lead with surprising claim or reversal
+- Present specific facts
+- Connect to broader pattern or modern day
+- End with thought-provoking element
+
+BAD EXAMPLES:
+❌ "Did you know? In 1969, Apollo 11 landed on the moon! 🚀 #History #Space"
+❌ "On this day in 1776, the Declaration of Independence was signed! Amazing! 🇺🇸"
+❌ "Thomas Edison was an incredible inventor who changed the world! ⚡"
+
+GOOD EXAMPLES:
+✅ "1969: We put humans on the moon.
+    2024: We argue about whether Earth is flat.
+    
+    Progress isn't linear."
+
+✅ "Napoleon wasn't short.
+    He was 5'7" - average for his time.
+    
+    British propaganda. We believed it for 200 years."
+
+✅ "Oxford University: Founded 1096
+    Aztec Empire: Founded 1325
+    
+    We teach history like European institutions are 'modern.'
+    They're often more ancient than the 'ancient' civilizations we study."
+
+✅ "1518: Dancing plague in Strasbourg. People danced until death.
+    2024: Infinite scroll. Doom scrolling. Screen addiction.
+    
+    We keep finding new ways to trap ourselves in loops."
+
+Use this voice for all content generation.`;
+
 /**
  * Generate content with automatic fact-checking
- * @param {string} prompt - Content generation prompt
- * @param {object} context - Context for verification (event details, etc.)
- * @param {object} options - Generation options
- * @returns {Promise<object>} Generated content with verification
  */
 export async function generateVerifiedContent(prompt, context = {}, options = {}) {
   const {
     maxRetries = 3,
-    minConfidence = 90, // Auto-post threshold
-    queueMedium = true  // Queue medium-confidence content
+    minConfidence = 90,
+    queueMedium = true
   } = options;
 
   let attempt = 0;
@@ -31,7 +72,7 @@ export async function generateVerifiedContent(prompt, context = {}, options = {}
     console.log(`[VerifiedGenerator] Attempt ${attempt}/${maxRetries}`);
 
     try {
-      // Generate content
+      // Generate content with distinctive voice
       const content = await generateContent(prompt);
       
       // Verify content
@@ -87,10 +128,10 @@ export async function generateVerifiedContent(prompt, context = {}, options = {}
     }
   }
 
-  // All retries exhausted - return best result or fail
+  // All retries exhausted
   if (bestResult) {
     if (bestResult.verification.needsReview && queueMedium) {
-      console.log(`[VerifiedGenerator] All retries exhausted. Best result: ${bestResult.verification.confidence}%. Adding to queue.`);
+      console.log(`[VerifiedGenerator] All retries exhausted. Best: ${bestResult.verification.confidence}%. Queuing.`);
       const queueItem = await addToQueue({ 
         content: bestResult.content, 
         context, 
@@ -101,17 +142,14 @@ export async function generateVerifiedContent(prompt, context = {}, options = {}
         verification: bestResult.verification,
         status: 'QUEUED',
         queueId: queueItem.id,
-        autoApproved: false,
-        note: 'Best of multiple attempts, needs review'
+        autoApproved: false
       };
     } else {
-      console.log(`[VerifiedGenerator] All retries exhausted. Best result: ${bestResult.verification.confidence}%. Rejected.`);
       return {
         content: bestResult.content,
         verification: bestResult.verification,
         status: 'REJECTED',
-        autoApproved: false,
-        note: 'All attempts failed confidence threshold'
+        autoApproved: false
       };
     }
   }
@@ -120,13 +158,13 @@ export async function generateVerifiedContent(prompt, context = {}, options = {}
 }
 
 /**
- * Generate content using OpenAI
+ * Generate content using OpenAI with distinctive voice
  */
 async function generateContent(prompt) {
   const response = await openai.chat.completions.create({
     model: 'gpt-4o',
     messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'system', content: VOICE_SYSTEM_PROMPT },
       { role: 'user', content: prompt }
     ],
     temperature: 0.8,
@@ -137,24 +175,38 @@ async function generateContent(prompt) {
 }
 
 /**
- * Generate a single tweet with verification
+ * Generate a single tweet with verification - MYTH-BUSTING style
  */
 export async function generateVerifiedTweet(event, options = {}) {
-  const prompt = `Create an engaging tweet about this historical event:
+  const prompt = `Create a myth-busting or pattern-revealing tweet about this event:
 
 Year: ${event.year}
 Event: ${event.description}
 Date: ${event.monthName} ${event.day}
 
-Requirements:
-- Make it surprising and shareable
-- Challenge assumptions or reveal lesser-known facts
-- Use specific details
-- No hashtags, no emojis (unless truly essential)
-- 280 characters max
-- End with a thought-provoking element (question, connection to today, or surprising detail)
+APPROACH OPTIONS (pick the best fit):
+1. REVERSAL: Challenge a common misconception
+2. PATTERN: Connect to modern parallel
+3. TIMELINE TWIST: Surprising chronology fact
+4. FORGOTTEN IMPACT: Explain why this matters but we forgot
 
-Focus on making people stop scrolling, think, and want to share.`;
+REQUIREMENTS:
+- 2-4 short sentences (or lines)
+- First line: Surprising claim or fact
+- Middle: Specific detail
+- Last line: Thought-provoking element or modern connection
+- NO hashtags, NO emojis, NO exclamation marks
+- 280 characters max
+- Deadpan tone
+
+EXAMPLES OF GOOD STRUCTURE:
+"[Surprising fact about the event]
+
+[Specific detail that makes it real]
+
+[Modern connection or pattern OR why we got it wrong]"
+
+Make people stop scrolling and think.`;
 
   const context = {
     year: event.year,
@@ -166,30 +218,38 @@ Focus on making people stop scrolling, think, and want to share.`;
 }
 
 /**
- * Generate a thread with verification
+ * Generate a thread with verification - DEEP DIVE style
  */
 export async function generateVerifiedThread(event, options = {}) {
-  const prompt = `Create a 5-6 tweet thread about this historical event:
+  const prompt = `Create a 5-6 tweet thread that makes this event unforgettable:
 
 Year: ${event.year}
 Event: ${event.description}
 
-Thread structure:
-1. Hook tweet (stop the scroll)
-2. Set the scene (context)
-3. The story (what happened)
-4. The impact (why it matters)
-5. Connection to today or thought-provoking question
+THREAD STRUCTURE:
+1. HOOK: Surprising claim or question (make them stop scrolling)
+2. CONTEXT: Set the scene with specific details
+3. THE STORY: What actually happened (with a twist if possible)
+4. THE IMPACT: Why it mattered (not obvious impacts)
+5. MODERN CONNECTION: How it relates to today OR pattern it reveals
+6. ENGAGEMENT: Question that makes them think or share
 
-Requirements:
-- Each tweet 280 chars max
+VOICE RULES:
+- Deadpan delivery
 - No hashtags, no emojis
-- Use specific details
-- Make it engaging and shareable
+- Each tweet: 2-4 sentences max
+- Specific details over generic statements
 - Challenge assumptions
-- End with engagement hook
+- Reveal patterns
 
-Format: Return each tweet on a new line, numbered 1-5 or 1-6.`;
+FORMAT: Return numbered tweets (1-6), each on new line.
+
+EXAMPLE HOOK:
+"1. Everyone thinks medieval people were filthy.
+
+They weren't. They bathed regularly, had soap, used perfume.
+
+The myth started with Victorians who wanted to feel superior."`;
 
   const context = {
     year: event.year,
@@ -201,8 +261,7 @@ Format: Return each tweet on a new line, numbered 1-5 or 1-6.`;
 }
 
 /**
- * Batch generate multiple pieces of content
- * Useful for creating a content bank
+ * Batch generate with distinctive voice
  */
 export async function batchGenerateVerified(events, options = {}) {
   const results = [];
@@ -211,25 +270,18 @@ export async function batchGenerateVerified(events, options = {}) {
     try {
       const result = await generateVerifiedTweet(event, options);
       results.push({ event, ...result });
-      
-      // Small delay to avoid rate limits
       await new Promise(resolve => setTimeout(resolve, 1000));
     } catch (error) {
-      console.error('[VerifiedGenerator] Batch generation error:', error.message);
-      results.push({
-        event,
-        status: 'ERROR',
-        error: error.message
-      });
+      console.error('[VerifiedGenerator] Batch error:', error.message);
+      results.push({ event, status: 'ERROR', error: error.message });
     }
   }
   
   const approved = results.filter(r => r.status === 'APPROVED').length;
   const queued = results.filter(r => r.status === 'QUEUED').length;
   const rejected = results.filter(r => r.status === 'REJECTED').length;
-  const errors = results.filter(r => r.status === 'ERROR').length;
   
-  console.log(`[VerifiedGenerator] Batch complete: ${approved} approved, ${queued} queued, ${rejected} rejected, ${errors} errors`);
+  console.log(`[VerifiedGenerator] Batch: ${approved} approved, ${queued} queued, ${rejected} rejected`);
   
   return results;
 }
