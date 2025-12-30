@@ -9,7 +9,7 @@ on:
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    timeout-minutes: 55  # Timeout after 55 minutes (before next run)
 
     env:
       API_KEY: ${{ secrets.API_KEY }}
@@ -64,17 +64,3 @@ jobs:
           else
             echo "No state changes to commit."
           fi
-```
-
-5. Commit the file
-
----
-
-## 📊 HOW THIS WORKS:
-
-### GitHub Actions runs every hour (top of the hour):
-```
-00:00 UTC - Bot starts, checks schedule
-09:00 UTC - Bot posts daily tweet (if that's the current time)
-10:00 UTC - Bot posts quick fact
-... and so on

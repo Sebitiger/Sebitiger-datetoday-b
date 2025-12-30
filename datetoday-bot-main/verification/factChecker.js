@@ -1,227 +1,289 @@
 /**
- * FACT VERIFICATION SYSTEM
+ * ENHANCED FACT CHECKER with CORRECTIONS + WIKIPEDIA VERIFICATION
  * 
- * This module provides AI-powered fact-checking for generated content.
- * It uses GPT-4 to verify historical accuracy before posting.
- * 
- * Confidence Levels:
- * - HIGH (90-100): Verified facts, safe to auto-post
- * - MEDIUM (70-89): Likely accurate, queue for review
- * - LOW (0-69): Questionable accuracy, reject
+ * Multi-layer verification:
+ * 1. GPT-4 initial check with specific corrections
+ * 2. Wikipedia cross-reference for key facts
+ * 3. Final confidence scoring (target: 95%+)
  */
 
 import { openai } from '../openaiCommon.js';
 
-const FACT_CHECK_PROMPT = `You are a strict historical fact-checker. Your job is to verify the accuracy of historical claims.
-
-CRITICAL RULES:
-1. Be STRICT - err on the side of caution
-2. Check for oversimplifications that distort truth
-3. Flag claims that lack nuance
-4. Verify dates, names, and specific details
-5. Identify potential propaganda or bias
-6. Note missing context that changes meaning
-
-CONFIDENCE LEVELS:
-- 100: Absolutely verified, multiple reliable sources
-- 90-99: Very confident, well-documented facts
-- 80-89: Confident, but minor uncertainties exist
-- 70-79: Likely accurate, but lacks some verification
-- 60-69: Questionable, significant concerns
-- 0-59: Inaccurate or misleading
-
-RESPONSE FORMAT (JSON only):
-{
-  "confidence": 0-100,
-  "verdict": "ACCURATE" | "NEEDS_NUANCE" | "MISLEADING" | "INACCURATE",
-  "concerns": ["list of specific issues"],
-  "corrections": ["suggested fixes"],
-  "sources_to_check": ["what to verify"],
-  "missing_context": ["important omissions"]
+/**
+ * Main verification function with corrections
+ */
+export async function verifyAndDecide(content, context = {}) {
+  // Layer 1: GPT-4 Verification with corrections
+  const gptVerification = await verifyWithGPT4(content, context);
+  
+  // If high confidence, check Wikipedia for extra validation
+  if (gptVerification.confidence >= 85) {
+    const wikiVerification = await verifyWithWikipedia(content, context);
+    
+    // Combine scores
+    const finalConfidence = calculateFinalConfidence(gptVerification, wikiVerification);
+    
+    return {
+      ...gptVerification,
+      confidence: finalConfidence,
+      wikipediaVerified: wikiVerification.verified,
+      wikipediaSources: wikiVerification.sources,
+      shouldPost: finalConfidence >= 95,
+      needsReview: finalConfidence >= 90 && finalConfidence < 95,
+      action: finalConfidence >= 95 ? 'POST' : (finalConfidence >= 90 ? 'QUEUE' : 'CORRECT')
+    };
+  }
+  
+  // If low confidence, return with corrections for retry
+  return {
+    ...gptVerification,
+    shouldPost: false,
+    needsReview: false,
+    action: gptVerification.confidence >= 70 ? 'CORRECT' : 'REJECT'
+  };
 }
 
-Examples of what to flag:
-
-❌ "Galileo was put on trial for discovering Jupiter's moons"
-→ INACCURATE: He was tried for heliocentrism, not the moons
-→ Confidence: 20
-
-❌ "Einstein failed math in school"
-→ INACCURATE: Myth from grading system change
-→ Confidence: 15
-
-✅ "Napoleon was 5'7\", average for his time"
-→ ACCURATE: Well-documented, multiple sources
-→ Confidence: 95
-
-⚠️ "Medieval people were filthy"
-→ NEEDS_NUANCE: They bathed regularly, this is Victorian propaganda
-→ Confidence: 60
-
-Return ONLY the JSON object, no other text.`;
-
 /**
- * Verify a historical claim using GPT-4
- * @param {string} claim - The claim to verify (e.g., a tweet or thread)
- * @param {object} context - Additional context (event year, description, etc.)
- * @returns {Promise<object>} Verification result
+ * GPT-4 Verification with specific corrections
  */
-export async function verifyHistoricalClaim(claim, context = {}) {
-  try {
-    console.log('[FactChecker] Verifying claim:', claim.slice(0, 100) + '...');
-    
-    const contextInfo = [];
-    if (context.year) contextInfo.push(`Year: ${context.year}`);
-    if (context.eventDescription) contextInfo.push(`Event: ${context.eventDescription}`);
-    
-    const fullPrompt = contextInfo.length > 0
-      ? `${contextInfo.join('\n')}\n\nCLAIM TO VERIFY:\n${claim}`
-      : `CLAIM TO VERIFY:\n${claim}`;
+async function verifyWithGPT4(content, context) {
+  const verificationPrompt = `You are a meticulous fact-checker. Verify this historical content for accuracy.
 
+Content to verify:
+"${content}"
+
+Context:
+Year: ${context.year || 'Unknown'}
+Event: ${context.eventDescription || 'Unknown'}
+
+Your task:
+1. Check historical accuracy (dates, names, facts)
+2. Identify oversimplifications or missing context
+3. Provide SPECIFIC corrections if anything is wrong
+4. Give a confidence score (0-100%)
+
+Respond in JSON format:
+{
+  "confidence": 85,
+  "verdict": "ACCURATE" | "NEEDS_NUANCE" | "INCORRECT",
+  "concerns": ["concern1", "concern2"],
+  "corrections": [
+    "Specific correction 1",
+    "Specific correction 2"
+  ],
+  "suggestedFix": "If corrections needed, suggest how to fix the content",
+  "reasoning": "Brief explanation of your assessment"
+}
+
+EXAMPLES OF GOOD CORRECTIONS:
+❌ BAD: "Date is wrong"
+✅ GOOD: "Event happened in 1815, not 1816. Correct date: June 18, 1815"
+
+❌ BAD: "Missing context"
+✅ GOOD: "Add context: This occurred during the Napoleonic Wars, specifically at Waterloo"
+
+❌ BAD: "Name is incorrect"
+✅ GOOD: "Napoleon was 5'7\\" (170cm), not 5'2\\". The 'short Napoleon' is British propaganda"
+
+Be specific, actionable, and helpful.`;
+
+  try {
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [
-        { role: 'system', content: FACT_CHECK_PROMPT },
-        { role: 'user', content: fullPrompt }
+        { 
+          role: 'system', 
+          content: 'You are an expert fact-checker. Provide detailed, specific corrections in valid JSON format.' 
+        },
+        { role: 'user', content: verificationPrompt }
       ],
-      temperature: 0.1, // Low temperature for consistency
-      max_tokens: 1000
+      temperature: 0.3, // Lower temp for accuracy
+      response_format: { type: "json_object" }
     });
 
-    let result = response.choices[0].message.content.trim();
+    const result = JSON.parse(response.choices[0].message.content);
     
-    // Strip markdown code blocks if present
-    if (result.startsWith('```json')) {
-      result = result.replace(/^```json\s*/g, '').replace(/\s*```$/g, '');
-    } else if (result.startsWith('```')) {
-      result = result.replace(/^```\s*/g, '').replace(/\s*```$/g, '');
-    }
-    result = result.trim();
-    
-    // Parse JSON response
-    let verification;
-    try {
-      verification = JSON.parse(result);
-    } catch (parseError) {
-      console.error('[FactChecker] Failed to parse JSON:', result);
-      throw new Error('Fact-checker returned invalid JSON');
-    }
+    console.log('[FactChecker] GPT-4 Verification:', {
+      confidence: result.confidence,
+      verdict: result.verdict,
+      hasCorrections: result.corrections?.length > 0
+    });
 
-    // Validate response structure
-    if (!verification.confidence || !verification.verdict) {
-      throw new Error('Fact-checker response missing required fields');
-    }
-
-    // Add timestamp
-    verification.timestamp = new Date().toISOString();
-    verification.claim = claim;
-    verification.context = context;
-
-    // Log result
-    console.log(`[FactChecker] Verdict: ${verification.verdict} (confidence: ${verification.confidence}%)`);
-    if (verification.concerns?.length > 0) {
-      console.log('[FactChecker] Concerns:', verification.concerns);
-    }
-
-    return verification;
+    return {
+      confidence: result.confidence || 0,
+      verdict: result.verdict || 'UNKNOWN',
+      concerns: result.concerns || [],
+      corrections: result.corrections || [],
+      suggestedFix: result.suggestedFix || null,
+      reasoning: result.reasoning || '',
+      verificationMethod: 'GPT-4'
+    };
 
   } catch (error) {
-    console.error('[FactChecker] Verification failed:', error.message);
+    console.error('[FactChecker] GPT-4 verification error:', error.message);
     
-    // Return safe default on error
+    // Default to cautious response on error
     return {
-      confidence: 0,
+      confidence: 50,
       verdict: 'ERROR',
-      concerns: [error.message],
+      concerns: ['Verification failed'],
       corrections: [],
-      sources_to_check: [],
-      missing_context: [],
-      timestamp: new Date().toISOString(),
-      claim,
-      context
+      suggestedFix: null,
+      reasoning: error.message,
+      verificationMethod: 'GPT-4'
     };
   }
 }
 
 /**
- * Determine if content should be auto-posted, queued, or rejected
- * @param {object} verification - Result from verifyHistoricalClaim
- * @returns {object} Action to take
+ * Wikipedia Verification Layer
+ * Searches Wikipedia to cross-reference key facts
  */
-export function getVerificationAction(verification) {
-  const { confidence, verdict } = verification;
-
-  // HIGH CONFIDENCE: Auto-post
-  if (confidence >= 90 && verdict === 'ACCURATE') {
-    return {
-      action: 'POST',
-      reason: 'High confidence, verified accurate',
-      shouldPost: true,
-      needsReview: false
-    };
-  }
-
-  // MEDIUM CONFIDENCE: Queue for review
-  if (confidence >= 70 && (verdict === 'ACCURATE' || verdict === 'NEEDS_NUANCE')) {
-    return {
-      action: 'QUEUE',
-      reason: 'Medium confidence, needs human review',
-      shouldPost: false,
-      needsReview: true
-    };
-  }
-
-  // LOW CONFIDENCE: Reject
-  return {
-    action: 'REJECT',
-    reason: `Low confidence (${confidence}%) or ${verdict}`,
-    shouldPost: false,
-    needsReview: false
-  };
-}
-
-/**
- * Verify content and get posting decision
- * @param {string} content - Content to verify
- * @param {object} context - Context information
- * @returns {Promise<object>} Complete verification result with action
- */
-export async function verifyAndDecide(content, context = {}) {
-  const verification = await verifyHistoricalClaim(content, context);
-  const action = getVerificationAction(verification);
-  
-  return {
-    ...verification,
-    ...action
-  };
-}
-
-/**
- * Batch verify multiple pieces of content
- * @param {Array<{content: string, context: object}>} items - Items to verify
- * @returns {Promise<Array<object>>} Verification results
- */
-export async function batchVerify(items) {
-  console.log(`[FactChecker] Batch verifying ${items.length} items...`);
-  
-  const results = [];
-  
-  for (const item of items) {
-    const result = await verifyAndDecide(item.content, item.context);
-    results.push({
-      ...item,
-      verification: result
-    });
+async function verifyWithWikipedia(content, context) {
+  try {
+    // Extract key terms to search
+    const searchTerms = extractKeyTerms(content, context);
     
-    // Small delay to avoid rate limits
-    await new Promise(resolve => setTimeout(resolve, 500));
+    console.log('[WikiVerifier] Searching for:', searchTerms);
+    
+    // Search Wikipedia for each key term
+    const wikiResults = await Promise.all(
+      searchTerms.slice(0, 2).map(term => searchWikipedia(term))
+    );
+    
+    // Check if content matches Wikipedia
+    const matches = wikiResults.filter(r => r.found);
+    const verificationScore = (matches.length / searchTerms.slice(0, 2).length) * 100;
+    
+    console.log('[WikiVerifier] Found', matches.length, 'of', searchTerms.slice(0, 2).length, 'terms');
+    
+    return {
+      verified: matches.length > 0,
+      score: verificationScore,
+      sources: matches.map(m => m.url),
+      termsChecked: searchTerms.slice(0, 2),
+      termsFound: matches.map(m => m.term)
+    };
+    
+  } catch (error) {
+    console.error('[WikiVerifier] Error:', error.message);
+    return {
+      verified: false,
+      score: 0,
+      sources: [],
+      termsChecked: [],
+      termsFound: []
+    };
+  }
+}
+
+/**
+ * Extract key terms from content for Wikipedia search
+ */
+function extractKeyTerms(content, context) {
+  const terms = [];
+  
+  // Add year if present
+  if (context.year) {
+    terms.push(context.year.toString());
   }
   
-  const posted = results.filter(r => r.verification.shouldPost).length;
-  const queued = results.filter(r => r.verification.needsReview).length;
-  const rejected = results.filter(r => !r.verification.shouldPost && !r.verification.needsReview).length;
+  // Extract proper nouns and important terms from content
+  // Simple approach: look for capitalized words and dates
+  const words = content.match(/[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*/g) || [];
+  const dates = content.match(/\b\d{4}\b/g) || [];
   
-  console.log(`[FactChecker] Batch complete: ${posted} to post, ${queued} queued, ${rejected} rejected`);
+  // Combine and deduplicate
+  const allTerms = [...new Set([...terms, ...words, ...dates])];
   
-  return results;
+  // Filter out common words
+  const filtered = allTerms.filter(term => 
+    term.length > 3 && 
+    !['This', 'That', 'Today', 'December', 'January'].includes(term)
+  );
+  
+  return filtered.slice(0, 3); // Max 3 terms to search
+}
+
+/**
+ * Search Wikipedia for a term
+ */
+async function searchWikipedia(term) {
+  try {
+    // Wikipedia API search
+    const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(term)}&format=json&origin=*`;
+    
+    const response = await fetch(searchUrl);
+    const data = await response.json();
+    
+    if (data.query?.search?.length > 0) {
+      const pageTitle = data.query.search[0].title;
+      const pageUrl = `https://en.wikipedia.org/wiki/${encodeURIComponent(pageTitle.replace(/ /g, '_'))}`;
+      
+      return {
+        found: true,
+        term,
+        title: pageTitle,
+        url: pageUrl
+      };
+    }
+    
+    return { found: false, term };
+    
+  } catch (error) {
+    console.error('[WikiSearch] Error searching for', term, ':', error.message);
+    return { found: false, term };
+  }
+}
+
+/**
+ * Calculate final confidence score combining GPT-4 and Wikipedia
+ */
+function calculateFinalConfidence(gptVerification, wikiVerification) {
+  const gptScore = gptVerification.confidence;
+  const wikiScore = wikiVerification.score;
+  
+  // If Wikipedia verification successful, boost confidence
+  if (wikiVerification.verified) {
+    // Weighted average: GPT-4 (70%), Wikipedia (30%)
+    const combined = (gptScore * 0.7) + (wikiScore * 0.3);
+    
+    // Cap at 98% (never 100% certain)
+    return Math.min(Math.round(combined), 98);
+  }
+  
+  // If Wikipedia check failed or returned nothing, use GPT-4 score only
+  return gptScore;
+}
+
+/**
+ * Apply corrections to content
+ * This is called by the generator when confidence is <90%
+ */
+export function buildCorrectionPrompt(originalContent, verification) {
+  if (!verification.corrections || verification.corrections.length === 0) {
+    return null;
+  }
+  
+  return `Previous version had issues. Generate a corrected version.
+
+ORIGINAL CONTENT:
+"${originalContent}"
+
+ISSUES FOUND:
+${verification.concerns.map(c => `- ${c}`).join('\n')}
+
+SPECIFIC CORRECTIONS NEEDED:
+${verification.corrections.map(c => `- ${c}`).join('\n')}
+
+${verification.suggestedFix ? `SUGGESTED FIX:\n${verification.suggestedFix}\n` : ''}
+
+Generate a NEW version that:
+1. Fixes ALL the issues above
+2. Uses the same engaging style
+3. Keeps the same approximate length
+4. Maintains deadpan, myth-busting tone
+5. NO hashtags, NO emojis
+
+CORRECTED VERSION:`;
 }

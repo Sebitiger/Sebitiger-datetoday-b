@@ -1,15 +1,19 @@
 /**
- * VERIFIED CONTENT GENERATOR - WITH DISTINCTIVE VOICE
+ * VERIFIED CONTENT GENERATOR - WITH CORRECTION LOOP
  * 
- * Generates content with built-in fact-checking and verification.
- * Updated with deadpan, pattern-seeking voice that makes history memorable.
+ * Enhanced system that:
+ * 1. Generates content
+ * 2. Verifies with GPT-4 + Wikipedia
+ * 3. If <95%, uses corrections to fix
+ * 4. Re-verifies
+ * 5. Aims for 95%+ confidence
  */
 
-import { openai, SYSTEM_PROMPT } from '../openaiCommon.js';
-import { verifyAndDecide } from './factChecker.js';
+import { openai } from '../openaiCommon.js';
+import { verifyAndDecide, buildCorrectionPrompt } from './factChecker.js';
 import { addToQueue } from './reviewQueue.js';
 
-// DISTINCTIVE VOICE GUIDELINES
+// DISTINCTIVE VOICE
 const VOICE_SYSTEM_PROMPT = `You are a historian with a distinctive, memorable voice:
 
 VOICE CHARACTERISTICS:
@@ -25,63 +29,48 @@ STRUCTURE:
 - Connect to broader pattern or modern day
 - End with thought-provoking element
 
-BAD EXAMPLES:
-❌ "Did you know? In 1969, Apollo 11 landed on the moon! 🚀 #History #Space"
-❌ "On this day in 1776, the Declaration of Independence was signed! Amazing! 🇺🇸"
-❌ "Thomas Edison was an incredible inventor who changed the world! ⚡"
-
-GOOD EXAMPLES:
-✅ "1969: We put humans on the moon.
-    2024: We argue about whether Earth is flat.
-    
-    Progress isn't linear."
-
-✅ "Napoleon wasn't short.
-    He was 5'7" - average for his time.
-    
-    British propaganda. We believed it for 200 years."
-
-✅ "Oxford University: Founded 1096
-    Aztec Empire: Founded 1325
-    
-    We teach history like European institutions are 'modern.'
-    They're often more ancient than the 'ancient' civilizations we study."
-
-✅ "1518: Dancing plague in Strasbourg. People danced until death.
-    2024: Infinite scroll. Doom scrolling. Screen addiction.
-    
-    We keep finding new ways to trap ourselves in loops."
-
 Use this voice for all content generation.`;
 
 /**
- * Generate content with automatic fact-checking
+ * Generate content with correction loop
+ * Target: 95%+ confidence
  */
 export async function generateVerifiedContent(prompt, context = {}, options = {}) {
   const {
-    maxRetries = 3,
+    maxAttempts = 3,
+    targetConfidence = 95,
     minConfidence = 90,
     queueMedium = true
   } = options;
 
   let attempt = 0;
+  let content = null;
+  let verification = null;
   let bestResult = null;
 
-  while (attempt < maxRetries) {
+  while (attempt < maxAttempts) {
     attempt++;
-    console.log(`[VerifiedGenerator] Attempt ${attempt}/${maxRetries}`);
+    console.log(`[VerifiedGenerator] 🎯 Attempt ${attempt}/${maxAttempts}`);
 
     try {
-      // Generate content with distinctive voice
-      const content = await generateContent(prompt);
+      // Generate content (or corrected version)
+      if (attempt === 1) {
+        content = await generateContent(prompt);
+      } else if (verification?.corrections?.length > 0) {
+        console.log(`[VerifiedGenerator] 🔧 Applying ${verification.corrections.length} corrections`);
+        const correctionPrompt = buildCorrectionPrompt(content, verification);
+        content = await generateContent(correctionPrompt);
+      } else {
+        content = await generateContent(prompt);
+      }
       
-      // Verify content
-      const verification = await verifyAndDecide(content, context);
+      // Verify content (GPT-4 + Wikipedia)
+      verification = await verifyAndDecide(content, context);
       
-      console.log(`[VerifiedGenerator] Generated content verification:`, {
+      console.log(`[VerifiedGenerator] 📊 Result:`, {
         confidence: verification.confidence,
         verdict: verification.verdict,
-        action: verification.action
+        wiki: verification.wikipediaVerified || false
       });
 
       // Track best result
@@ -89,49 +78,57 @@ export async function generateVerifiedContent(prompt, context = {}, options = {}
         bestResult = { content, verification };
       }
 
-      // HIGH confidence - auto-post
-      if (verification.shouldPost && verification.confidence >= minConfidence) {
-        console.log(`[VerifiedGenerator] ✅ High confidence (${verification.confidence}%), ready to post`);
+      // TARGET REACHED - 95%+ confidence
+      if (verification.confidence >= targetConfidence) {
+        console.log(`[VerifiedGenerator] ✅ TARGET! ${verification.confidence}%`);
         return {
           content,
           verification,
           status: 'APPROVED',
-          autoApproved: true
+          autoApproved: true,
+          attempts: attempt,
+          wikipediaVerified: verification.wikipediaVerified
         };
       }
 
-      // MEDIUM confidence - queue for review
-      if (verification.needsReview && queueMedium) {
-        console.log(`[VerifiedGenerator] ⚠️ Medium confidence (${verification.confidence}%), adding to review queue`);
+      // HIGH confidence (90-94%) - queue
+      if (verification.confidence >= minConfidence) {
+        console.log(`[VerifiedGenerator] ⚠️  ${verification.confidence}% - queuing`);
         const queueItem = await addToQueue({ content, context, verification });
         return {
           content,
           verification,
           status: 'QUEUED',
           queueId: queueItem.id,
-          autoApproved: false
+          autoApproved: false,
+          attempts: attempt
         };
       }
 
-      // LOW confidence - retry if we have attempts left
-      if (attempt < maxRetries) {
-        console.log(`[VerifiedGenerator] ❌ Low confidence (${verification.confidence}%), retrying...`);
+      // MEDIUM - apply corrections
+      if (verification.confidence >= 70 && attempt < maxAttempts) {
+        console.log(`[VerifiedGenerator] 🔄 ${verification.confidence}% - correcting`);
+        continue;
+      }
+
+      // LOW - retry fresh
+      if (attempt < maxAttempts) {
+        console.log(`[VerifiedGenerator] ❌ ${verification.confidence}% - retry`);
+        verification.corrections = [];
         continue;
       }
 
     } catch (error) {
-      console.error(`[VerifiedGenerator] Error on attempt ${attempt}:`, error.message);
-      
-      if (attempt === maxRetries) {
-        throw error;
-      }
+      console.error(`[VerifiedGenerator] 💥 Error:`, error.message);
+      if (attempt === maxAttempts) throw error;
     }
   }
 
-  // All retries exhausted
+  // Exhausted - use best
   if (bestResult) {
-    if (bestResult.verification.needsReview && queueMedium) {
-      console.log(`[VerifiedGenerator] All retries exhausted. Best: ${bestResult.verification.confidence}%. Queuing.`);
+    const conf = bestResult.verification.confidence;
+    
+    if (conf >= 85 && queueMedium) {
       const queueItem = await addToQueue({ 
         content: bestResult.content, 
         context, 
@@ -142,24 +139,23 @@ export async function generateVerifiedContent(prompt, context = {}, options = {}
         verification: bestResult.verification,
         status: 'QUEUED',
         queueId: queueItem.id,
-        autoApproved: false
+        autoApproved: false,
+        attempts: maxAttempts
       };
     } else {
       return {
         content: bestResult.content,
         verification: bestResult.verification,
         status: 'REJECTED',
-        autoApproved: false
+        autoApproved: false,
+        attempts: maxAttempts
       };
     }
   }
 
-  throw new Error('Failed to generate content after all retries');
+  throw new Error('Failed to generate content');
 }
 
-/**
- * Generate content using OpenAI with distinctive voice
- */
 async function generateContent(prompt) {
   const response = await openai.chat.completions.create({
     model: 'gpt-4o',
@@ -174,95 +170,67 @@ async function generateContent(prompt) {
   return response.choices[0].message.content.trim();
 }
 
-/**
- * Generate a single tweet with verification - MYTH-BUSTING style
- */
 export async function generateVerifiedTweet(event, options = {}) {
-  const prompt = `Create a myth-busting or pattern-revealing tweet about this event:
+  const prompt = `Create a myth-busting or pattern-revealing tweet:
 
 Year: ${event.year}
 Event: ${event.description}
 Date: ${event.monthName} ${event.day}
 
-APPROACH OPTIONS (pick the best fit):
-1. REVERSAL: Challenge a common misconception
-2. PATTERN: Connect to modern parallel
-3. TIMELINE TWIST: Surprising chronology fact
-4. FORGOTTEN IMPACT: Explain why this matters but we forgot
+APPROACH:
+1. REVERSAL: Challenge misconception
+2. PATTERN: Modern parallel
+3. TIMELINE TWIST: Surprising chronology
+4. FORGOTTEN IMPACT: Why it matters
 
 REQUIREMENTS:
-- 2-4 short sentences (or lines)
-- First line: Surprising claim or fact
-- Middle: Specific detail
-- Last line: Thought-provoking element or modern connection
-- NO hashtags, NO emojis, NO exclamation marks
-- 280 characters max
+- 2-4 short sentences
+- First: Surprising claim
+- Middle: Specific detail (dates, names, numbers)
+- Last: Thought-provoking element
+- NO hashtags, NO emojis
+- 280 chars max
 - Deadpan tone
+- BE SPECIFIC (helps verification)`;
 
-EXAMPLES OF GOOD STRUCTURE:
-"[Surprising fact about the event]
-
-[Specific detail that makes it real]
-
-[Modern connection or pattern OR why we got it wrong]"
-
-Make people stop scrolling and think.`;
-
-  const context = {
+  return generateVerifiedContent(prompt, {
     year: event.year,
     eventDescription: event.description,
     contentType: 'single_tweet'
-  };
-
-  return generateVerifiedContent(prompt, context, options);
+  }, options);
 }
 
-/**
- * Generate a thread with verification - DEEP DIVE style
- */
 export async function generateVerifiedThread(event, options = {}) {
-  const prompt = `Create a 5-6 tweet thread that makes this event unforgettable:
+  const prompt = `Create a 5-6 tweet thread:
 
 Year: ${event.year}
 Event: ${event.description}
 
-THREAD STRUCTURE:
-1. HOOK: Surprising claim or question (make them stop scrolling)
-2. CONTEXT: Set the scene with specific details
-3. THE STORY: What actually happened (with a twist if possible)
-4. THE IMPACT: Why it mattered (not obvious impacts)
-5. MODERN CONNECTION: How it relates to today OR pattern it reveals
-6. ENGAGEMENT: Question that makes them think or share
+STRUCTURE:
+1. HOOK: Surprising claim
+2. CONTEXT: Specific details
+3. STORY: What happened
+4. IMPACT: Why it mattered
+5. CONNECTION: Modern parallel
+6. ENGAGEMENT: Question
 
-VOICE RULES:
-- Deadpan delivery
-- No hashtags, no emojis
-- Each tweet: 2-4 sentences max
-- Specific details over generic statements
+VOICE:
+- Deadpan
+- No hashtags/emojis
+- 2-4 sentences each
+- Specific facts (dates, names)
 - Challenge assumptions
-- Reveal patterns
 
-FORMAT: Return numbered tweets (1-6), each on new line.
+FORMAT: Numbered tweets (1-6), new line each.
+BE SPECIFIC with facts.`;
 
-EXAMPLE HOOK:
-"1. Everyone thinks medieval people were filthy.
-
-They weren't. They bathed regularly, had soap, used perfume.
-
-The myth started with Victorians who wanted to feel superior."`;
-
-  const context = {
+  return generateVerifiedContent(prompt, {
     year: event.year,
     eventDescription: event.description,
     contentType: 'thread'
-  };
-
-  return generateVerifiedContent(prompt, context, options);
+  }, options);
 }
 
-/**
- * Batch generate with distinctive voice
- */
 export async function batchGenerateVerified(events, options = {}) {
   const results = [];
   
@@ -270,9 +238,8 @@ export async function batchGenerateVerified(events, options = {}) {
     try {
       const result = await generateVerifiedTweet(event, options);
       results.push({ event, ...result });
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 2000));
     } catch (error) {
-      console.error('[VerifiedGenerator] Batch error:', error.message);
       results.push({ event, status: 'ERROR', error: error.message });
     }
   }
@@ -280,8 +247,9 @@ export async function batchGenerateVerified(events, options = {}) {
   const approved = results.filter(r => r.status === 'APPROVED').length;
   const queued = results.filter(r => r.status === 'QUEUED').length;
   const rejected = results.filter(r => r.status === 'REJECTED').length;
+  const wikiVerified = results.filter(r => r.wikipediaVerified).length;
   
-  console.log(`[VerifiedGenerator] Batch: ${approved} approved, ${queued} queued, ${rejected} rejected`);
+  console.log(`[Batch] ✅${approved} ⏸️${queued} ❌${rejected} 🌐${wikiVerified}`);
   
   return results;
 }
