@@ -5,6 +5,15 @@ on:
     # Run every hour
     - cron: "0 * * * *"
   workflow_dispatch:  # Manual trigger
+    inputs:
+      force_post:
+        description: 'Force post immediately (ignoring schedule)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 jobs:
   run-bot:
@@ -38,6 +47,8 @@ jobs:
         run: |
           cd datetoday-bot-main
           node run-scheduled-post.js
+        env:
+          FORCE_POST: ${{ github.event.inputs.force_post || 'false' }}
 
       - name: Commit bot state (if changed)
         if: always()

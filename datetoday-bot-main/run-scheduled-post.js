@@ -16,8 +16,15 @@ const currentHour = now.getUTCHours();
 const currentMinute = now.getUTCMinutes();
 const currentDay = now.getUTCDay();
 
-console.log(`[Scheduler] Current UTC time: ${currentHour}:${currentMinute.toString().padStart(2, '0')}`);
-console.log(`[Scheduler] Current day: ${currentDay} (0=Sun, 1=Mon, etc.)`);
+// Check if this is a forced manual post
+const forcePost = process.env.FORCE_POST === 'true';
+
+if (forcePost) {
+  console.log('[Scheduler] 🚀 MANUAL TRIGGER - Force posting immediately!');
+} else {
+  console.log(`[Scheduler] Current UTC time: ${currentHour}:${currentMinute.toString().padStart(2, '0')}`);
+  console.log(`[Scheduler] Current day: ${currentDay} (0=Sun, 1=Mon, etc.)`);
+}
 
 // Check if we should post for this hour
 // Accept posts if we're within the hour window (00-59 minutes)
@@ -54,9 +61,9 @@ async function postVerifiedTweet(jobName, contentType = "single") {
     if (result.status === 'APPROVED') {
       info(`[Verified] ✅ ${jobName} APPROVED (${result.verification.confidence}% confidence)`);
       
-      // Fetch and verify image
+      // Fetch and verify image (STRICT mode - only APPROVED 85%+)
       console.log('[Verified] 🖼️  Fetching verified image...');
-      const imageBuffer = await fetchVerifiedImage(event, result.content, 70);
+      const imageBuffer = await fetchVerifiedImage(event, result.content);
       
       if (imageBuffer) {
         console.log('[Verified] ✅ Image verified and approved');
@@ -142,16 +149,21 @@ async function postVerifiedTweet(jobName, contentType = "single") {
     const stats = await getQueueStats();
     info(`[Verification] 📊 Queue: ${stats.pending} pending`);
     
-    // Early exit if not a posting hour
-    if (!shouldPost && !isSundayThreadTime) {
+    // Early exit if not a posting hour (unless forced)
+    if (!forcePost && !shouldPost && !isSundayThreadTime) {
       info(`[Scheduler] ⏸️  Not a posting hour - exiting`);
       process.exit(0);
     }
     
     let posted = false;
     
+    // If forced, always post a test tweet
+    if (forcePost) {
+      info("[Scheduler] 🧪 MANUAL TEST POST - Posting now!");
+      posted = await postVerifiedTweet("Manual Test Post");
+    }
     // Post based on current hour
-    if (currentHour === 9) {
+    else if (currentHour === 9) {
       info("[Scheduler] 🌅 09:00 UTC - Daily Main Tweet");
       posted = await postVerifiedTweet("Daily Main Tweet");
     } else if (currentHour === 12) {

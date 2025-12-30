@@ -1,5 +1,6 @@
 /**
- * ENHANCED IMAGE VERIFICATION SYSTEM
+ * ENHANCED IMAGE VERIFICATION SYSTEM - STRICT MODE
+ * Only accepts APPROVED verdict with 85%+ confidence
  */
 
 import { openai } from '../openaiCommon.js';
@@ -7,7 +8,7 @@ import { fetchEventImage } from '../fetchImage.js';
 
 async function verifyImageMatch(imageMetadata, event, tweetContent) {
   try {
-    const verificationPrompt = `You are verifying that an image matches a historical event.
+    const verificationPrompt = `You are verifying that an image matches a historical event. Be VERY strict.
 
 EVENT:
 Year: ${event.year}
@@ -18,37 +19,53 @@ TWEET CONTENT:
 
 IMAGE METADATA:
 Source: ${imageMetadata.source}
-Search Term: ${imageMetadata.searchTerm}
+Search Term Used: ${imageMetadata.searchTerm}
+Image URL Fragment: ${imageMetadata.urlFragment || 'Unknown'}
+
+Your task:
+1. Check if the image ACTUALLY shows the person/event described
+2. Look for name mismatches (e.g., "King Michael" vs "Queen Mary" = WRONG)
+3. Check for wrong time period or context
+4. Be strict - when in doubt, mark as QUESTIONABLE or WRONG
 
 Respond in JSON:
 {
   "isMatch": true/false,
   "confidence": 85,
   "verdict": "APPROVED" | "QUESTIONABLE" | "WRONG",
-  "reasoning": "Brief explanation"
+  "reasoning": "Specific explanation of why this image does/doesn't match"
 }
 
-Be strict. Modern satellite imagery for historical events = WRONG. Generic stock photos = QUESTIONABLE.`;
+CRITICAL EXAMPLES:
+- Event about "King X", Image shows "Queen Y" = WRONG (different person!)
+- Event about battle, Image shows unrelated scene = WRONG
+- Event from 1900s, Image is modern photo = WRONG
+- Generic stock photo with no specific connection = QUESTIONABLE
+- Historical photo clearly showing the actual event/person = APPROVED
+
+Be STRICT. Only mark APPROVED if you're confident the image actually matches.`;
 
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [
-        { role: 'system', content: 'Expert at verifying historical image accuracy. Respond in JSON.' },
+        { role: 'system', content: 'Expert at verifying historical image accuracy. Be strict. Respond in JSON.' },
         { role: 'user', content: verificationPrompt }
       ],
-      temperature: 0.3,
+      temperature: 0.2, // Even lower for stricter checking
       response_format: { type: "json_object" }
     });
 
     const result = JSON.parse(response.choices[0].message.content);
     
     console.log('[ImageVerifier] Result:', result.verdict, result.confidence + '%');
+    console.log('[ImageVerifier] Reasoning:', result.reasoning);
 
     return {
       isMatch: result.isMatch !== false,
       confidence: result.confidence || 0,
       verdict: result.verdict || 'QUESTIONABLE',
-      reasoning: result.reasoning || ''
+      reasoning: result.reasoning || '',
+      concerns: result.concerns || []
     };
 
   } catch (error) {
@@ -57,46 +74,51 @@ Be strict. Modern satellite imagery for historical events = WRONG. Generic stock
       isMatch: false,
       confidence: 0,
       verdict: 'ERROR',
-      reasoning: error.message
+      reasoning: error.message,
+      concerns: ['Verification system error']
     };
   }
 }
 
-export async function fetchVerifiedImage(event, tweetContent, minConfidence = 70) {
+export async function fetchVerifiedImage(event, tweetContent) {
   try {
     console.log('[ImageVerifier] 🖼️  Fetching image...');
     
     const imageBuffer = await fetchEventImage(event, false);
     
     if (!imageBuffer) {
-      console.log('[ImageVerifier] No image found');
+      console.log('[ImageVerifier] No image found - posting text-only');
       return null;
     }
     
+    // Extract more metadata for better verification
     const imageMetadata = {
       source: 'Wikipedia/Pexels/Unsplash',
-      searchTerm: event.description?.split(' ').slice(0, 5).join(' ')
+      searchTerm: event.description?.split(' ').slice(0, 8).join(' '),
+      urlFragment: 'Unknown' // Could be extracted from fetch process
     };
     
-    console.log('[ImageVerifier] 🔍 Verifying accuracy...');
+    console.log('[ImageVerifier] 🔍 Verifying accuracy with STRICT mode...');
     
     const verification = await verifyImageMatch(imageMetadata, event, tweetContent);
     
-    if (verification.verdict === 'APPROVED' && verification.confidence >= minConfidence) {
-      console.log(`[ImageVerifier] ✅ APPROVED (${verification.confidence}%)`);
+    // STRICT RULE: Only APPROVED verdict with 85%+ confidence
+    if (verification.verdict === 'APPROVED' && verification.confidence >= 85) {
+      console.log(`[ImageVerifier] ✅ Image APPROVED (${verification.confidence}%)`);
+      console.log(`[ImageVerifier] Reason: ${verification.reasoning}`);
       return imageBuffer;
     }
     
-    if (verification.verdict === 'QUESTIONABLE' && verification.confidence >= 80) {
-      console.log(`[ImageVerifier] ⚠️  QUESTIONABLE but high confidence (${verification.confidence}%)`);
-      return imageBuffer;
-    }
-    
-    console.log(`[ImageVerifier] ❌ REJECTED (${verification.confidence}%): ${verification.reasoning}`);
+    // Everything else = reject
+    console.log(`[ImageVerifier] ❌ Image REJECTED`);
+    console.log(`[ImageVerifier] Verdict: ${verification.verdict}, Confidence: ${verification.confidence}%`);
+    console.log(`[ImageVerifier] Reason: ${verification.reasoning}`);
+    console.log(`[ImageVerifier] → Posting text-only instead`);
     return null;
     
   } catch (error) {
     console.error('[ImageVerifier] Error:', error.message);
+    console.log('[ImageVerifier] → Posting text-only due to error');
     return null;
   }
 }
