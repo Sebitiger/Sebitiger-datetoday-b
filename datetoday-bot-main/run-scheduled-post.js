@@ -13,10 +13,22 @@ import { getQueueStats } from "./verification/reviewQueue.js";
 // Check current UTC time
 const now = new Date();
 const currentHour = now.getUTCHours();
+const currentMinute = now.getUTCMinutes();
 const currentDay = now.getUTCDay();
 
-console.log(`[Scheduler] Current UTC time: ${currentHour}:00`);
+console.log(`[Scheduler] Current UTC time: ${currentHour}:${currentMinute.toString().padStart(2, '0')}`);
 console.log(`[Scheduler] Current day: ${currentDay} (0=Sun, 1=Mon, etc.)`);
+
+// Check if we should post for this hour
+// Accept posts if we're within the hour window (00-59 minutes)
+const scheduledHours = [9, 12, 15, 18, 21];
+const shouldPost = scheduledHours.includes(currentHour);
+const isSundayThreadTime = currentDay === 0 && currentHour === 16;
+
+if (!shouldPost && !isSundayThreadTime) {
+  console.log(`[Scheduler] ⏸️  No post scheduled for ${currentHour}:00 UTC`);
+  console.log(`[Scheduler] Next posts: 09:00, 12:00, 15:00, 18:00, 21:00 UTC (and 16:00 Sunday)`);
+}
 
 // VERIFIED POSTING FUNCTION WITH IMAGES
 async function postVerifiedTweet(jobName, contentType = "single") {
@@ -127,41 +139,39 @@ async function postVerifiedTweet(jobName, contentType = "single") {
     const stats = await getQueueStats();
     info(`[Verification] 📊 Queue: ${stats.pending} pending`);
     
+    // Early exit if not a posting hour
+    if (!shouldPost && !isSundayThreadTime) {
+      info(`[Scheduler] ⏸️  Not a posting hour - exiting`);
+      process.exit(0);
+    }
+    
     let posted = false;
     
-    switch (currentHour) {
-      case 9:
-        info("[Scheduler] 🌅 09:00 UTC - Daily Main Tweet");
-        posted = await postVerifiedTweet("Daily Main Tweet");
-        break;
-      case 12:
-        info("[Scheduler] ☀️  12:00 UTC - Mid-day Fact");
-        posted = await postVerifiedTweet("Mid-day Fact");
-        break;
-      case 15:
-        info("[Scheduler] 🌤  15:00 UTC - Afternoon Fact");
-        posted = await postVerifiedTweet("Afternoon Fact");
-        break;
-      case 18:
-        info("[Scheduler] 🌆 18:00 UTC - Evening Fact");
-        posted = await postVerifiedTweet("Evening Fact");
-        break;
-      case 21:
-        info("[Scheduler] 🌙 21:00 UTC - Night Fact");
-        posted = await postVerifiedTweet("Night Fact");
-        break;
-      case 16:
-        if (currentDay === 0) { // Sunday
-          info("[Scheduler] 📚 Sunday 16:00 UTC - Weekly Thread");
-          posted = await postVerifiedTweet("Weekly Deep Dive Thread", "thread");
-        }
-        break;
-      default:
-        info(`[Scheduler] ⏸️  No post scheduled for ${currentHour}:00 UTC`);
+    // Post based on current hour
+    if (currentHour === 9) {
+      info("[Scheduler] 🌅 09:00 UTC - Daily Main Tweet");
+      posted = await postVerifiedTweet("Daily Main Tweet");
+    } else if (currentHour === 12) {
+      info("[Scheduler] ☀️  12:00 UTC - Mid-day Fact");
+      posted = await postVerifiedTweet("Mid-day Fact");
+    } else if (currentHour === 15) {
+      info("[Scheduler] 🌤  15:00 UTC - Afternoon Fact");
+      posted = await postVerifiedTweet("Afternoon Fact");
+    } else if (currentHour === 18) {
+      info("[Scheduler] 🌆 18:00 UTC - Evening Fact");
+      posted = await postVerifiedTweet("Evening Fact");
+    } else if (currentHour === 21) {
+      info("[Scheduler] 🌙 21:00 UTC - Night Fact");
+      posted = await postVerifiedTweet("Night Fact");
+    } else if (isSundayThreadTime) {
+      info("[Scheduler] 📚 Sunday 16:00 UTC - Weekly Thread");
+      posted = await postVerifiedTweet("Weekly Deep Dive Thread", "thread");
     }
     
     if (posted) {
       info("[Scheduler] ✅ Post completed");
+    } else {
+      info("[Scheduler] ⚠️  Post was queued or rejected");
     }
     
     process.exit(0);
