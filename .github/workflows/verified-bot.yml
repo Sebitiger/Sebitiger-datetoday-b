@@ -1,7 +1,7 @@
-name: DateToday Verified Bot
+name: DateToday Verified Bot - Test Post
 
 on:
-  workflow_dispatch:  # Manual trigger only for now
+  workflow_dispatch:  # Manual trigger only
 
 jobs:
   run-bot:
@@ -30,28 +30,7 @@ jobs:
           cd datetoday-bot-main
           npm install
 
-      - name: Clear duplicate database entry
+      - name: Post ONE verified tweet (test)
         run: |
           cd datetoday-bot-main
-          # Remove King Michael entry from database
-          node -e "
-          const fs = require('fs');
-          const dbPath = './data/posted_content.json';
-          if (fs.existsSync(dbPath)) {
-            const data = JSON.parse(fs.readFileSync(dbPath));
-            const before = data.posts?.length || 0;
-            data.posts = (data.posts || []).filter(p => 
-              !p.hash?.includes('king-michael') && 
-              !p.content?.toLowerCase().includes('king michael')
-            );
-            const after = data.posts.length;
-            fs.writeFileSync(dbPath, JSON.stringify(data, null, 2));
-            console.log('Removed', before - after, 'King Michael entries');
-          }
-          "
-
-      - name: Run VERIFIED bot (single test post)
-        run: |
-          cd datetoday-bot-main
-          # Run the NEW verified index.js
-          timeout 5m node index.js || echo "Bot ran (may have exited normally)"
+          node test-post.js
