@@ -157,8 +157,11 @@ async function uploadMedia(mediaBuffer, type) {
     throw new Error("Unsupported media type");
   }
 
-  console.log(`[Twitter] Uploading ${type} media…`);
-  const mediaId = await client.v1.uploadMedia(mediaBuffer, { type });
+  // Map type to proper MIME type for Twitter API
+  const mimeType = type === "image" ? "image/jpeg" : "video/mp4";
+
+  console.log(`[Twitter] Uploading ${type} media (${mimeType})…`);
+  const mediaId = await client.v1.uploadMedia(mediaBuffer, { mimeType });
   console.log(`[Twitter] ${type} media uploaded. ID:`, mediaId);
   return mediaId;
 }
