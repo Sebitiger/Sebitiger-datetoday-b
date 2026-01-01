@@ -191,8 +191,16 @@ export async function fetchVerifiedImage(event, tweetContent) {
 
     // STEP 1: ALWAYS try Wikipedia first (most reliable)
     console.log('[ImageVerifier] Trying Wikipedia (primary source)...');
+    console.log('[ImageVerifier] Event:', event.year, event.description?.slice(0, 60));
     try {
       const wikipediaImage = await fetchEventImage(event, false);
+      console.log('[ImageVerifier] Wikipedia returned:', {
+        exists: !!wikipediaImage,
+        isBuffer: Buffer.isBuffer(wikipediaImage),
+        type: typeof wikipediaImage,
+        length: wikipediaImage?.length
+      });
+
       if (wikipediaImage && Buffer.isBuffer(wikipediaImage)) {
         candidates.push({
           buffer: wikipediaImage,
@@ -202,16 +210,29 @@ export async function fetchVerifiedImage(event, tweetContent) {
           }
         });
         console.log('[ImageVerifier] ✅ Wikipedia image found');
+      } else if (wikipediaImage) {
+        console.log('[ImageVerifier] ⚠️  Wikipedia returned data but not a Buffer');
+      } else {
+        console.log('[ImageVerifier] ⚠️  Wikipedia returned null/undefined');
       }
     } catch (error) {
-      console.log('[ImageVerifier] Wikipedia fetch failed:', error.message);
+      console.log('[ImageVerifier] ❌ Wikipedia fetch error:', error.message);
+      console.log('[ImageVerifier] Stack:', error.stack?.slice(0, 200));
     }
 
     // STEP 2: Try Wikimedia Commons as backup (also reliable)
     if (candidates.length === 0) {
       console.log('[ImageVerifier] Trying Wikimedia Commons (backup)...');
+      console.log('[ImageVerifier] Search term:', searchTerm);
       try {
         const wikimediaResult = await fetchFromWikimediaCommons(searchTerm, true);
+        console.log('[ImageVerifier] Wikimedia returned:', {
+          exists: !!wikimediaResult,
+          type: typeof wikimediaResult,
+          hasBuffer: !!wikimediaResult?.buffer,
+          isDirectBuffer: Buffer.isBuffer(wikimediaResult)
+        });
+
         if (wikimediaResult) {
           const buffer = wikimediaResult.buffer || wikimediaResult;
           const metadata = wikimediaResult.metadata || {
@@ -219,13 +240,23 @@ export async function fetchVerifiedImage(event, tweetContent) {
             searchTerm: searchTerm
           };
 
+          console.log('[ImageVerifier] Extracted buffer:', {
+            isBuffer: Buffer.isBuffer(buffer),
+            length: buffer?.length
+          });
+
           if (buffer && Buffer.isBuffer(buffer)) {
             candidates.push({ buffer, metadata });
             console.log('[ImageVerifier] ✅ Wikimedia Commons image found');
+          } else {
+            console.log('[ImageVerifier] ⚠️  Wikimedia result exists but buffer is invalid');
           }
+        } else {
+          console.log('[ImageVerifier] ⚠️  Wikimedia returned null/undefined');
         }
       } catch (error) {
-        console.log('[ImageVerifier] Wikimedia Commons fetch failed:', error.message);
+        console.log('[ImageVerifier] ❌ Wikimedia fetch error:', error.message);
+        console.log('[ImageVerifier] Stack:', error.stack?.slice(0, 200));
       }
     }
 
@@ -239,15 +270,24 @@ export async function fetchVerifiedImage(event, tweetContent) {
 
     // STEP 4: Quality check the first candidate
     const candidate = candidates[0];
+    console.log('[ImageVerifier] Running quality check on candidate from:', candidate.metadata.source);
     const qualityCheck = await checkImageQuality(candidate.buffer);
 
+    console.log('[ImageVerifier] Quality check result:', {
+      passed: qualityCheck.passed,
+      reason: qualityCheck.reason,
+      width: qualityCheck.metadata?.width,
+      height: qualityCheck.metadata?.height,
+      format: qualityCheck.metadata?.format
+    });
+
     if (!qualityCheck.passed) {
-      console.log(`[ImageVerifier] ⚠️  Quality check failed: ${qualityCheck.reason}`);
+      console.log(`[ImageVerifier] ❌ Quality check FAILED: ${qualityCheck.reason}`);
       console.log('[ImageVerifier] → Posting text-only');
       return null;
     }
 
-    console.log(`[ImageVerifier] ✅ Quality check passed: ${qualityCheck.reason}`);
+    console.log(`[ImageVerifier] ✅ Quality check PASSED: ${qualityCheck.reason}`);
 
     // STEP 5: GPT-4 Vision verification (optional - can be disabled for speed/cost)
     const ENABLE_VISION_VERIFICATION = false; // Set to true to enable full GPT-4 Vision verification
