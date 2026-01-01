@@ -1,6 +1,6 @@
 /**
- * ENHANCED IMAGE VERIFICATION SYSTEM - STRICT MODE
- * Only accepts APPROVED verdict with 85%+ confidence
+ * ENHANCED IMAGE VERIFICATION SYSTEM - BALANCED MODE
+ * Only accepts APPROVED verdict with 70%+ confidence
  */
 
 import { openai } from '../openaiCommon.js';
@@ -98,12 +98,12 @@ export async function fetchVerifiedImage(event, tweetContent) {
       urlFragment: 'Unknown' // Could be extracted from fetch process
     };
     
-    console.log('[ImageVerifier] 🔍 Verifying accuracy with STRICT mode...');
-    
+    console.log('[ImageVerifier] 🔍 Verifying accuracy with BALANCED mode...');
+
     const verification = await verifyImageMatch(imageMetadata, event, tweetContent);
-    
-    // STRICT RULE: Only APPROVED verdict with 85%+ confidence
-    if (verification.verdict === 'APPROVED' && verification.confidence >= 85) {
+
+    // BALANCED RULE: Only APPROVED verdict with 70%+ confidence
+    if (verification.verdict === 'APPROVED' && verification.confidence >= 70) {
       console.log(`[ImageVerifier] ✅ Image APPROVED (${verification.confidence}%)`);
       console.log(`[ImageVerifier] Reason: ${verification.reasoning}`);
       return imageBuffer;
