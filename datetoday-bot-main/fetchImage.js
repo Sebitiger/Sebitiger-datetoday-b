@@ -12,9 +12,10 @@ dotenv.config();
 /**
  * Try to fetch image from a Wikipedia page
  * @param {number} pageId - Wikipedia page ID
- * @returns {Promise<Buffer|null>} - Image buffer or null
+ * @param {boolean} returnMetadata - If true, returns {buffer, metadata}, otherwise just buffer
+ * @returns {Promise<Buffer|Object|null>} - Image buffer or {buffer, metadata} or null
  */
-async function fetchImageFromPageId(pageId) {
+async function fetchImageFromPageId(pageId, returnMetadata = false) {
   try {
     const pageInfoRes = await axios.get(
       "https://en.wikipedia.org/w/api.php",
@@ -22,8 +23,12 @@ async function fetchImageFromPageId(pageId) {
         params: {
           action: "query",
           pageids: pageId,
-          prop: "pageimages",
+          prop: "pageimages|info|extracts",
           pithumbsize: 1200,
+          inprop: "url",
+          exintro: true,
+          explaintext: true,
+          exsentences: 2,
           format: "json",
           origin: "*",
         },
@@ -42,7 +47,11 @@ async function fetchImageFromPageId(pageId) {
     }
 
     const imageUrl = pageInfo.thumbnail.source;
-    console.log(`[Image] Found thumbnail URL for page ${pageId}:`, imageUrl);
+    const pageTitle = pageInfo.title || 'Unknown';
+    const pageDescription = pageInfo.extract || '';
+    const pageUrl = pageInfo.fullurl || '';
+
+    console.log(`[Image] Found thumbnail URL for page ${pageId}: ${pageTitle}`);
 
     // Download with retry
     const imgRes = await retryWithBackoff(async () => {
@@ -68,13 +77,29 @@ async function fetchImageFromPageId(pageId) {
     }
     
     const processedBuffer = await processImageBuffer(rawImageBuffer);
-    
+
     if (!processedBuffer || !Buffer.isBuffer(processedBuffer) || processedBuffer.length === 0) {
       console.error("[Image] Processed buffer is invalid");
       return null;
     }
-    
+
     console.log(`[Image] ✅ Successfully fetched and processed image from page ${pageId}, size: ${(processedBuffer.length / 1024).toFixed(2)} KB`);
+
+    // Return with metadata if requested
+    if (returnMetadata) {
+      return {
+        buffer: processedBuffer,
+        metadata: {
+          source: 'Wikipedia',
+          title: pageTitle,
+          description: pageDescription,
+          url: imageUrl,
+          pageUrl: pageUrl,
+          pageId: pageId
+        }
+      };
+    }
+
     return processedBuffer;
   } catch (err) {
     console.error(`[Image] Failed to fetch from page ID ${pageId}:`, err.message);
