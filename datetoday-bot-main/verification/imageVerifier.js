@@ -21,7 +21,7 @@ import { analyzeImageStyle, getStylePreferenceScore, trackImageStyle } from './s
  * @param {Buffer} imageBuffer - Image buffer to check
  * @returns {Promise<{passed: boolean, reason: string, metadata: Object}>}
  */
-async function checkImageQuality(imageBuffer) {
+export async function checkImageQuality(imageBuffer) {
   try {
     const metadata = await sharp(imageBuffer).metadata();
 
