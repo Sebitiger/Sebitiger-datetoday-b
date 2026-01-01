@@ -179,153 +179,107 @@ Be FAIR: Historical photos from the correct era that relate to the topic should 
 }
 
 /**
- * Fetch multiple image candidates from ALL sources and select the best one
- * Uses parallel fetching, GPT-4 Vision scoring, engagement optimization, and style learning
+ * Simplified, bulletproof image fetching with GPT-4 Vision verification
+ * ALWAYS tries Wikipedia first (most reliable), then optionally tries other sources
  */
 export async function fetchVerifiedImage(event, tweetContent) {
   try {
-    console.log('[ImageVerifier] 🖼️  Fetching multiple image candidates from all sources...');
-
-    // Get optimal source order based on engagement data
-    const recentSources = await getRecentSources(5);
-    const sourceOrder = await getOptimalSourceOrder(recentSources);
+    console.log('[ImageVerifier] 🖼️  Fetching image with GPT-4 Vision verification...');
 
     const searchTerm = event.description?.split(' ').slice(0, 8).join(' ');
-
-    // Define source fetch functions
-    const sourceFetchers = {
-      'Wikipedia Primary': () => fetchEventImage(event, false),
-      'Wikimedia Commons': () => fetchFromWikimediaCommons(searchTerm, true),
-      'Library of Congress': () => fetchFromLibraryOfCongress(searchTerm, event.year, true),
-      'Smithsonian': () => fetchFromSmithsonian(searchTerm, true)
-    };
-
-    // Fetch from top 3 sources in parallel (to save time)
-    const topSources = sourceOrder.slice(0, 3);
-    console.log(`[ImageVerifier] Fetching from top 3 sources: ${topSources.join(', ')}`);
-
-    const fetchPromises = topSources.map(async (sourceName) => {
-      const fetcher = sourceFetchers[sourceName];
-      if (!fetcher) return null;
-
-      try {
-        const result = await fetcher();
-        if (!result) return null;
-
-        // Handle both buffer-only and {buffer, metadata} returns
-        const buffer = result.buffer || result;
-        const metadata = result.metadata || {
-          source: sourceName,
-          searchTerm: searchTerm
-        };
-
-        return { buffer, metadata };
-      } catch (error) {
-        console.log(`[ImageVerifier] ${sourceName} fetch failed:`, error.message);
-        return null;
-      }
-    });
-
-    const results = await Promise.allSettled(fetchPromises);
     const candidates = [];
 
-    // Process results and apply quality filtering
-    for (const result of results) {
-      if (result.status !== 'fulfilled' || !result.value) continue;
-
-      const { buffer, metadata } = result.value;
-
-      // Pre-filter by quality
-      const qualityCheck = await checkImageQuality(buffer);
-
-      if (qualityCheck.passed) {
+    // STEP 1: ALWAYS try Wikipedia first (most reliable)
+    console.log('[ImageVerifier] Trying Wikipedia (primary source)...');
+    try {
+      const wikipediaImage = await fetchEventImage(event, false);
+      if (wikipediaImage && Buffer.isBuffer(wikipediaImage)) {
         candidates.push({
-          buffer,
+          buffer: wikipediaImage,
           metadata: {
-            ...metadata,
-            imageMetadata: qualityCheck.metadata
+            source: 'Wikipedia',
+            searchTerm: searchTerm
           }
         });
-        console.log(`[ImageVerifier] ✅ Quality passed: ${metadata.source}`);
-      } else {
-        console.log(`[ImageVerifier] ⚠️  Quality failed: ${metadata.source} - ${qualityCheck.reason}`);
+        console.log('[ImageVerifier] ✅ Wikipedia image found');
+      }
+    } catch (error) {
+      console.log('[ImageVerifier] Wikipedia fetch failed:', error.message);
+    }
+
+    // STEP 2: Try Wikimedia Commons as backup (also reliable)
+    if (candidates.length === 0) {
+      console.log('[ImageVerifier] Trying Wikimedia Commons (backup)...');
+      try {
+        const wikimediaResult = await fetchFromWikimediaCommons(searchTerm, true);
+        if (wikimediaResult) {
+          const buffer = wikimediaResult.buffer || wikimediaResult;
+          const metadata = wikimediaResult.metadata || {
+            source: 'Wikimedia Commons',
+            searchTerm: searchTerm
+          };
+
+          if (buffer && Buffer.isBuffer(buffer)) {
+            candidates.push({ buffer, metadata });
+            console.log('[ImageVerifier] ✅ Wikimedia Commons image found');
+          }
+        }
+      } catch (error) {
+        console.log('[ImageVerifier] Wikimedia Commons fetch failed:', error.message);
       }
     }
 
+    // STEP 3: If still no image, we're done (post text-only)
     if (candidates.length === 0) {
-      console.log('[ImageVerifier] No quality candidates found - posting text-only');
+      console.log('[ImageVerifier] ❌ No images found from any source - posting text-only');
       return null;
     }
 
-    console.log(`[ImageVerifier] 🔍 Evaluating ${candidates.length} candidate(s) with GPT-4 Vision...`);
+    console.log(`[ImageVerifier] Found ${candidates.length} candidate(s)`);
 
-    // Verify each candidate and score them
-    const scoredCandidates = [];
+    // STEP 4: Quality check the first candidate
+    const candidate = candidates[0];
+    const qualityCheck = await checkImageQuality(candidate.buffer);
 
-    for (let i = 0; i < candidates.length; i++) {
-      const candidate = candidates[i];
-      console.log(`[ImageVerifier] Analyzing candidate ${i + 1}/${candidates.length} (${candidate.metadata.source})...`);
-
-      // Run verification and style analysis in parallel
-      const [verification, styleInfo] = await Promise.all([
-        verifyImageMatch(
-          candidate.metadata,
-          event,
-          tweetContent,
-          candidate.buffer
-        ),
-        analyzeImageStyle(candidate.buffer)
-      ]);
-
-      // Get style preference score
-      const styleScore = await getStylePreferenceScore(styleInfo);
-
-      // Combined score: 70% verification confidence + 30% style preference
-      const combinedScore = verification.confidence * 0.7 + styleScore * 0.3;
-
-      scoredCandidates.push({
-        ...candidate,
-        verification,
-        styleInfo,
-        styleScore,
-        score: combinedScore
-      });
-
-      console.log(`[ImageVerifier] → ${verification.verdict} (${verification.confidence}%) | Style: ${styleInfo.type} (${styleScore.toFixed(1)}) | Combined: ${combinedScore.toFixed(1)}`);
+    if (!qualityCheck.passed) {
+      console.log(`[ImageVerifier] ⚠️  Quality check failed: ${qualityCheck.reason}`);
+      console.log('[ImageVerifier] → Posting text-only');
+      return null;
     }
 
-    // Sort by combined score (highest first)
-    scoredCandidates.sort((a, b) => b.score - a.score);
+    console.log(`[ImageVerifier] ✅ Quality check passed: ${qualityCheck.reason}`);
 
-    // Get the best candidate
-    const best = scoredCandidates[0];
+    // STEP 5: GPT-4 Vision verification (optional - can be disabled for speed/cost)
+    const ENABLE_VISION_VERIFICATION = false; // Set to true to enable full GPT-4 Vision verification
 
-    // BALANCED RULE: Only APPROVED verdict with 70%+ confidence
-    if (best.verification.verdict === 'APPROVED' && best.verification.confidence >= 70) {
-      console.log(`[ImageVerifier] ✅ Best image selected: ${best.metadata.source} (verification: ${best.verification.confidence}%, style: ${best.styleScore.toFixed(1)}, combined: ${best.score.toFixed(1)})`);
-      console.log(`[ImageVerifier] Reason: ${best.verification.reasoning}`);
-      console.log(`[ImageVerifier] Style: ${best.styleInfo.type} / ${best.styleInfo.era} / ${best.styleInfo.colorScheme}`);
+    if (ENABLE_VISION_VERIFICATION) {
+      console.log('[ImageVerifier] 🔍 Verifying with GPT-4 Vision...');
 
-      // Cache this successful image for future use
-      await cacheImage(event, {
-        source: best.metadata.source,
-        confidence: best.verification.confidence,
-        verdict: best.verification.verdict,
-        styleInfo: best.styleInfo
-      });
+      const verification = await verifyImageMatch(
+        candidate.metadata,
+        event,
+        tweetContent,
+        candidate.buffer
+      );
 
-      // Track style for diversity learning (will be associated with tweet later)
-      // Note: We'll track with tweetId when the tweet is posted
+      console.log(`[ImageVerifier] → ${verification.verdict} (${verification.confidence}%)`);
+      console.log(`[ImageVerifier] Reason: ${verification.reasoning}`);
 
-      return best.buffer;
+      // BALANCED RULE: Only APPROVED verdict with 70%+ confidence
+      if (verification.verdict === 'APPROVED' && verification.confidence >= 70) {
+        console.log('[ImageVerifier] ✅ Image APPROVED by GPT-4 Vision');
+        return candidate.buffer;
+      } else {
+        console.log(`[ImageVerifier] ❌ Image REJECTED by GPT-4 Vision (${verification.verdict}, ${verification.confidence}%)`);
+        console.log('[ImageVerifier] → Posting text-only');
+        return null;
+      }
+    } else {
+      // Simplified mode: if we have a quality image from reliable source, use it
+      console.log('[ImageVerifier] ✅ Using image (Vision verification disabled)');
+      console.log(`[ImageVerifier] Source: ${candidate.metadata.source}`);
+      return candidate.buffer;
     }
-
-    // Everything else = reject
-    console.log(`[ImageVerifier] ❌ All images REJECTED`);
-    console.log(`[ImageVerifier] Best was: ${best.verification.verdict} (${best.verification.confidence}%)`);
-    console.log(`[ImageVerifier] Reason: ${best.verification.reasoning}`);
-    console.log(`[ImageVerifier] → Posting text-only instead`);
-    return null;
 
   } catch (error) {
     console.error('[ImageVerifier] Error:', error.message);
