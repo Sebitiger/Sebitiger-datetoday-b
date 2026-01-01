@@ -104,8 +104,17 @@ Verdict guidelines:
       throw new Error('No response from GPT-4 Vision');
     }
 
+    // Clean markdown code fences if present (GPT-4 sometimes wraps JSON in ```json ... ```)
+    let cleanedContent = content.trim();
+    if (cleanedContent.startsWith('```')) {
+      // Remove opening fence (```json or ```)
+      cleanedContent = cleanedContent.replace(/^```(?:json)?\s*/i, '');
+      // Remove closing fence
+      cleanedContent = cleanedContent.replace(/\s*```\s*$/, '');
+    }
+
     // Parse JSON response
-    const parsed = JSON.parse(content);
+    const parsed = JSON.parse(cleanedContent);
 
     // Calculate combined score
     const combinedScore = calculateImageScore(
