@@ -5,7 +5,7 @@
 
 import { generateVerifiedTweet, generateVerifiedThread } from "./verification/verifiedGenerator.js";
 import { generateEnhancedTweet, generateEnhancedThread } from "./verification/enhancedContentGenerator.js";
-import { fetchVerifiedImage } from "./verification/imageVerifier.js";
+import { fetchVerifiedImage } from "./verification/enhancedImageVerifier.js";
 import { getRandomEvent } from "./fetchEvents.js";
 import { client as twitterClient, postTweetWithImage } from "./twitterClient.js";
 import { info, error, warn } from "./logger.js";
