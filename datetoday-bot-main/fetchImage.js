@@ -621,12 +621,15 @@ async function fetchFromPexels(searchTerm, eventDescription = null) {
 
 /**
  * Search Wikimedia Commons directly (more images than Wikipedia pages)
+ * @param {string} searchTerm - Search term
+ * @param {boolean} returnMetadata - If true, returns {buffer, metadata}
+ * @returns {Promise<Buffer|Object|null>} - Image buffer or {buffer, metadata} or null
  */
-async function fetchFromWikimediaCommons(searchTerm) {
+export async function fetchFromWikimediaCommons(searchTerm, returnMetadata = false) {
   try {
     const query = encodeURIComponent(searchTerm);
     const url = `https://commons.wikimedia.org/w/api.php`;
-    
+
     const response = await axios.get(url, {
       params: {
         action: "query",
@@ -641,22 +644,26 @@ async function fetchFromWikimediaCommons(searchTerm) {
       },
       timeout: 10000,
     });
-    
+
     const pages = response.data?.query?.search || [];
     if (pages.length === 0) {
       return null;
     }
-    
+
     // Get first page
     const pageId = pages[0].pageid;
-    
-    // Get page images
+    const pageTitle = pages[0].title || 'Unknown';
+    const pageSnippet = pages[0].snippet || '';
+
+    // Get page images and info
     const pageInfoRes = await axios.get(url, {
       params: {
         action: "query",
         pageids: pageId,
-        prop: "pageimages",
+        prop: "pageimages|info|imageinfo",
         pithumbsize: 1200,
+        inprop: "url",
+        iiprop: "url|extmetadata",
         format: "json",
         origin: "*",
       },
@@ -665,25 +672,239 @@ async function fetchFromWikimediaCommons(searchTerm) {
       },
       timeout: 10000,
     });
-    
+
     const pageInfo = pageInfoRes.data?.query?.pages?.[pageId];
     if (!pageInfo?.thumbnail?.source) {
       return null;
     }
-    
+
     const imageUrl = pageInfo.thumbnail.source;
-    console.log(`[Image] Found Wikimedia Commons image: ${pages[0].title}`);
-    
+    const pageUrl = pageInfo.fullurl || '';
+
+    // Try to extract date from metadata if available
+    const imageInfo = pageInfo.imageinfo?.[0];
+    const extMetadata = imageInfo?.extmetadata;
+    const dateCreated = extMetadata?.DateTimeOriginal?.value || extMetadata?.DateTime?.value || '';
+
+    console.log(`[Image] Found Wikimedia Commons image: ${pageTitle}`);
+
     // Download image
     const imgRes = await axios.get(imageUrl, {
       responseType: "arraybuffer",
       timeout: 10000,
     });
-    
+
     const rawImageBuffer = Buffer.from(imgRes.data);
-    return await processImageBuffer(rawImageBuffer);
+    const processedBuffer = await processImageBuffer(rawImageBuffer);
+
+    if (returnMetadata) {
+      return {
+        buffer: processedBuffer,
+        metadata: {
+          source: 'Wikimedia Commons',
+          title: pageTitle,
+          description: pageSnippet.replace(/<[^>]*>/g, ''), // Strip HTML tags
+          url: imageUrl,
+          pageUrl: pageUrl,
+          date: dateCreated,
+          pageId: pageId
+        }
+      };
+    }
+
+    return processedBuffer;
   } catch (err) {
     console.log(`[Image] Wikimedia Commons search failed: ${err.message}`);
+    return null;
+  }
+}
+
+/**
+ * Search Library of Congress for historical images
+ * LOC has millions of high-quality historical photos
+ * @param {string} searchTerm - Search term
+ * @param {number} year - Optional year to filter results
+ * @param {boolean} returnMetadata - If true, returns {buffer, metadata}
+ * @returns {Promise<Buffer|Object|null>} - Image buffer or {buffer, metadata} or null
+ */
+export async function fetchFromLibraryOfCongress(searchTerm, year = null, returnMetadata = false) {
+  try {
+    const query = encodeURIComponent(searchTerm);
+    const url = `https://www.loc.gov/collections/`;
+
+    // LOC API endpoint
+    const apiUrl = `https://www.loc.gov/search/`;
+
+    const params = {
+      q: searchTerm,
+      fo: 'json', // JSON format
+      c: 100, // Max results
+      at: 'results,pagination',
+      sp: 1 // Start page
+    };
+
+    // Add date filter if year provided
+    if (year) {
+      params.dates = `${year}/${year}`;
+    }
+
+    const response = await axios.get(apiUrl, {
+      params,
+      headers: {
+        'User-Agent': 'DateTodayBot/1.0 (https://github.com/yourusername/datetoday-bot; contact@example.com)',
+        'Accept': 'application/json'
+      },
+      timeout: 15000,
+    });
+
+    const results = response.data?.results || [];
+    if (results.length === 0) {
+      return null;
+    }
+
+    // Find first result with an image
+    for (const result of results.slice(0, 5)) {
+      const imageUrl = result.image_url?.[0];
+      if (!imageUrl) continue;
+
+      const title = result.title || 'Unknown';
+      const description = result.description?.[0] || '';
+      const date = result.date || year?.toString() || '';
+      const itemUrl = result.id || '';
+
+      console.log(`[Image] Found LOC image: ${title}`);
+
+      try {
+        // Download image
+        const imgRes = await axios.get(imageUrl, {
+          responseType: "arraybuffer",
+          timeout: 15000,
+          headers: {
+            'User-Agent': 'DateTodayBot/1.0'
+          }
+        });
+
+        const rawImageBuffer = Buffer.from(imgRes.data);
+        const processedBuffer = await processImageBuffer(rawImageBuffer);
+
+        if (returnMetadata) {
+          return {
+            buffer: processedBuffer,
+            metadata: {
+              source: 'Library of Congress',
+              title: title,
+              description: description,
+              url: imageUrl,
+              pageUrl: itemUrl,
+              date: date
+            }
+          };
+        }
+
+        return processedBuffer;
+      } catch (downloadErr) {
+        console.log(`[Image] Failed to download LOC image: ${downloadErr.message}`);
+        continue; // Try next result
+      }
+    }
+
+    return null;
+  } catch (err) {
+    console.log(`[Image] Library of Congress search failed: ${err.message}`);
+    return null;
+  }
+}
+
+/**
+ * Search Smithsonian Open Access for historical images
+ * Smithsonian has 3 million+ high-quality images, completely free
+ * @param {string} searchTerm - Search term
+ * @param {boolean} returnMetadata - If true, returns {buffer, metadata}
+ * @returns {Promise<Buffer|Object|null>} - Image buffer or {buffer, metadata} or null
+ */
+export async function fetchFromSmithsonian(searchTerm, returnMetadata = false) {
+  try {
+    const query = encodeURIComponent(searchTerm);
+    const apiUrl = `https://api.si.edu/openaccess/api/v1.0/search`;
+
+    const response = await axios.get(apiUrl, {
+      params: {
+        q: searchTerm,
+        rows: 10,
+        start: 0,
+        'api_key': '' // Smithsonian doesn't require API key for open access
+      },
+      headers: {
+        'User-Agent': 'DateTodayBot/1.0 (https://github.com/yourusername/datetoday-bot; contact@example.com)',
+        'Accept': 'application/json'
+      },
+      timeout: 15000,
+    });
+
+    const results = response.data?.response?.rows || [];
+    if (results.length === 0) {
+      return null;
+    }
+
+    // Find first result with online media
+    for (const result of results) {
+      const content = result.content;
+      const descriptiveNonRepeating = content?.descriptiveNonRepeating;
+      const onlineMedia = descriptiveNonRepeating?.online_media;
+
+      if (!onlineMedia || !onlineMedia.media || onlineMedia.media.length === 0) {
+        continue;
+      }
+
+      // Get largest image
+      const media = onlineMedia.media.find(m => m.type === 'Images');
+      if (!media || !media.content) continue;
+
+      const imageUrl = media.content;
+      const title = content?.freetext?.title?.[0]?.content || content?.title || 'Unknown';
+      const description = content?.freetext?.notes?.[0]?.content || '';
+      const date = content?.freetext?.date?.[0]?.content || '';
+      const itemUrl = descriptiveNonRepeating?.record_link || '';
+
+      console.log(`[Image] Found Smithsonian image: ${title}`);
+
+      try {
+        // Download image
+        const imgRes = await axios.get(imageUrl, {
+          responseType: "arraybuffer",
+          timeout: 15000,
+          headers: {
+            'User-Agent': 'DateTodayBot/1.0'
+          }
+        });
+
+        const rawImageBuffer = Buffer.from(imgRes.data);
+        const processedBuffer = await processImageBuffer(rawImageBuffer);
+
+        if (returnMetadata) {
+          return {
+            buffer: processedBuffer,
+            metadata: {
+              source: 'Smithsonian',
+              title: title,
+              description: description,
+              url: imageUrl,
+              pageUrl: itemUrl,
+              date: date
+            }
+          };
+        }
+
+        return processedBuffer;
+      } catch (downloadErr) {
+        console.log(`[Image] Failed to download Smithsonian image: ${downloadErr.message}`);
+        continue;
+      }
+    }
+
+    return null;
+  } catch (err) {
+    console.log(`[Image] Smithsonian search failed: ${err.message}`);
     return null;
   }
 }

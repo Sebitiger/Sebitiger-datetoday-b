@@ -4,9 +4,16 @@
  */
 
 import { openai } from '../openaiCommon.js';
-import { fetchEventImage } from '../fetchImage.js';
+import {
+  fetchEventImage,
+  fetchFromWikimediaCommons,
+  fetchFromLibraryOfCongress,
+  fetchFromSmithsonian
+} from '../fetchImage.js';
 import sharp from 'sharp';
 import { getCachedImage, cacheImage } from './imageCache.js';
+import { getOptimalSourceOrder, getRecentSources } from './sourceOptimizer.js';
+import { analyzeImageStyle, getStylePreferenceScore, trackImageStyle } from './stylePreferences.js';
 
 /**
  * Pre-filter images by quality before expensive GPT-4 Vision verification
@@ -172,45 +179,81 @@ Be FAIR: Historical photos from the correct era that relate to the topic should 
 }
 
 /**
- * Fetch multiple image candidates and select the best one
- * Uses parallel fetching and GPT-4 Vision scoring
+ * Fetch multiple image candidates from ALL sources and select the best one
+ * Uses parallel fetching, GPT-4 Vision scoring, engagement optimization, and style learning
  */
 export async function fetchVerifiedImage(event, tweetContent) {
   try {
-    console.log('[ImageVerifier] 🖼️  Fetching multiple image candidates...');
+    console.log('[ImageVerifier] 🖼️  Fetching multiple image candidates from all sources...');
 
-    // Strategy 1: Primary fetch from Wikipedia (usually best quality/accuracy)
-    const primaryImage = await fetchEventImage(event, false);
+    // Get optimal source order based on engagement data
+    const recentSources = await getRecentSources(5);
+    const sourceOrder = await getOptimalSourceOrder(recentSources);
 
-    // Strategy 2: Try alternative search approaches
-    // We'll fetch one image per strategy, but could expand this
+    const searchTerm = event.description?.split(' ').slice(0, 8).join(' ');
+
+    // Define source fetch functions
+    const sourceFetchers = {
+      'Wikipedia Primary': () => fetchEventImage(event, false),
+      'Wikimedia Commons': () => fetchFromWikimediaCommons(searchTerm, true),
+      'Library of Congress': () => fetchFromLibraryOfCongress(searchTerm, event.year, true),
+      'Smithsonian': () => fetchFromSmithsonian(searchTerm, true)
+    };
+
+    // Fetch from top 3 sources in parallel (to save time)
+    const topSources = sourceOrder.slice(0, 3);
+    console.log(`[ImageVerifier] Fetching from top 3 sources: ${topSources.join(', ')}`);
+
+    const fetchPromises = topSources.map(async (sourceName) => {
+      const fetcher = sourceFetchers[sourceName];
+      if (!fetcher) return null;
+
+      try {
+        const result = await fetcher();
+        if (!result) return null;
+
+        // Handle both buffer-only and {buffer, metadata} returns
+        const buffer = result.buffer || result;
+        const metadata = result.metadata || {
+          source: sourceName,
+          searchTerm: searchTerm
+        };
+
+        return { buffer, metadata };
+      } catch (error) {
+        console.log(`[ImageVerifier] ${sourceName} fetch failed:`, error.message);
+        return null;
+      }
+    });
+
+    const results = await Promise.allSettled(fetchPromises);
     const candidates = [];
 
-    if (primaryImage) {
+    // Process results and apply quality filtering
+    for (const result of results) {
+      if (result.status !== 'fulfilled' || !result.value) continue;
+
+      const { buffer, metadata } = result.value;
+
       // Pre-filter by quality
-      const qualityCheck = await checkImageQuality(primaryImage);
+      const qualityCheck = await checkImageQuality(buffer);
 
       if (qualityCheck.passed) {
         candidates.push({
-          buffer: primaryImage,
+          buffer,
           metadata: {
-            source: 'Wikipedia Primary',
-            searchTerm: event.description?.split(' ').slice(0, 8).join(' '),
+            ...metadata,
             imageMetadata: qualityCheck.metadata
           }
         });
-        console.log('[ImageVerifier] ✅ Found primary candidate from Wikipedia');
-        console.log('[ImageVerifier] Quality:', qualityCheck.reason);
+        console.log(`[ImageVerifier] ✅ Quality passed: ${metadata.source}`);
       } else {
-        console.log('[ImageVerifier] ⚠️  Primary candidate failed quality check:', qualityCheck.reason);
+        console.log(`[ImageVerifier] ⚠️  Quality failed: ${metadata.source} - ${qualityCheck.reason}`);
       }
     }
 
-    // For now, we start with primary source
-    // TODO: Add more sources in later steps (Wikimedia Commons, etc.)
-
     if (candidates.length === 0) {
-      console.log('[ImageVerifier] No image candidates found - posting text-only');
+      console.log('[ImageVerifier] No quality candidates found - posting text-only');
       return null;
     }
 
@@ -223,23 +266,35 @@ export async function fetchVerifiedImage(event, tweetContent) {
       const candidate = candidates[i];
       console.log(`[ImageVerifier] Analyzing candidate ${i + 1}/${candidates.length} (${candidate.metadata.source})...`);
 
-      const verification = await verifyImageMatch(
-        candidate.metadata,
-        event,
-        tweetContent,
-        candidate.buffer
-      );
+      // Run verification and style analysis in parallel
+      const [verification, styleInfo] = await Promise.all([
+        verifyImageMatch(
+          candidate.metadata,
+          event,
+          tweetContent,
+          candidate.buffer
+        ),
+        analyzeImageStyle(candidate.buffer)
+      ]);
+
+      // Get style preference score
+      const styleScore = await getStylePreferenceScore(styleInfo);
+
+      // Combined score: 70% verification confidence + 30% style preference
+      const combinedScore = verification.confidence * 0.7 + styleScore * 0.3;
 
       scoredCandidates.push({
         ...candidate,
         verification,
-        score: verification.confidence
+        styleInfo,
+        styleScore,
+        score: combinedScore
       });
 
-      console.log(`[ImageVerifier] → ${verification.verdict} (${verification.confidence}%): ${verification.reasoning}`);
+      console.log(`[ImageVerifier] → ${verification.verdict} (${verification.confidence}%) | Style: ${styleInfo.type} (${styleScore.toFixed(1)}) | Combined: ${combinedScore.toFixed(1)}`);
     }
 
-    // Sort by score (highest first)
+    // Sort by combined score (highest first)
     scoredCandidates.sort((a, b) => b.score - a.score);
 
     // Get the best candidate
@@ -247,8 +302,21 @@ export async function fetchVerifiedImage(event, tweetContent) {
 
     // BALANCED RULE: Only APPROVED verdict with 70%+ confidence
     if (best.verification.verdict === 'APPROVED' && best.verification.confidence >= 70) {
-      console.log(`[ImageVerifier] ✅ Best image selected: ${best.metadata.source} (${best.verification.confidence}%)`);
+      console.log(`[ImageVerifier] ✅ Best image selected: ${best.metadata.source} (verification: ${best.verification.confidence}%, style: ${best.styleScore.toFixed(1)}, combined: ${best.score.toFixed(1)})`);
       console.log(`[ImageVerifier] Reason: ${best.verification.reasoning}`);
+      console.log(`[ImageVerifier] Style: ${best.styleInfo.type} / ${best.styleInfo.era} / ${best.styleInfo.colorScheme}`);
+
+      // Cache this successful image for future use
+      await cacheImage(event, {
+        source: best.metadata.source,
+        confidence: best.verification.confidence,
+        verdict: best.verification.verdict,
+        styleInfo: best.styleInfo
+      });
+
+      // Track style for diversity learning (will be associated with tweet later)
+      // Note: We'll track with tweetId when the tweet is posted
+
       return best.buffer;
     }
 
