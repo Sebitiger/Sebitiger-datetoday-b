@@ -4,7 +4,8 @@
  */
 
 import { generateVerifiedTweet, generateVerifiedThread } from "./verification/verifiedGenerator.js";
-import { fetchVerifiedImage } from "./verification/imageVerifier.js";
+import { generateEnhancedTweet, generateEnhancedThread } from "./verification/enhancedContentGenerator.js";
+import { fetchVerifiedImage } from "./verification/enhancedImageVerifier.js";
 import { getRandomEvent } from "./fetchEvents.js";
 import { client as twitterClient, postTweetWithImage } from "./twitterClient.js";
 import { info, error, warn } from "./logger.js";
@@ -44,22 +45,28 @@ async function postVerifiedTweet(jobName, contentType = "single") {
   try {
     const event = await getRandomEvent();
     
-    const result = contentType === "thread" 
-      ? await generateVerifiedThread(event, {
+    // Use ENHANCED generator for viral-optimized content
+    const result = contentType === "thread"
+      ? await generateEnhancedThread(event, {
           targetConfidence: 90,
           minConfidence: 85,
+          minEngagement: 75,
           maxAttempts: 3,
           queueMedium: true
         })
-      : await generateVerifiedTweet(event, {
+      : await generateEnhancedTweet(event, {
           targetConfidence: 90,
           minConfidence: 85,
+          minEngagement: 75,
           maxAttempts: 3,
           queueMedium: true
         });
     
     if (result.status === 'APPROVED') {
-      info(`[Verified] ✅ ${jobName} APPROVED (${result.verification.confidence}% confidence)`);
+      const engagementInfo = result.engagement
+        ? ` | Engagement: ${result.engagement.total}/100 (${result.engagement.strongPoint})`
+        : '';
+      info(`[Verified] ✅ ${jobName} APPROVED (${result.verification.confidence}% confidence${engagementInfo})`);
       
       // Fetch and verify image (STRICT mode - only APPROVED 85%+)
       console.log('[Verified] 🖼️  Fetching verified image...');
