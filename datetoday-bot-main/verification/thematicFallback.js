@@ -20,13 +20,49 @@ function extractThematicTerms(event) {
   const description = event.description.toLowerCase();
   const year = event.year;
 
-  // Era-based terms
+  // PRIORITY 1: War/conflict themes (most specific)
+  if (description.includes('war') || description.includes('battle')) {
+    if (description.includes('world war i') || description.includes('ww1') || (year >= 1914 && year <= 1918)) {
+      terms.push('world war 1', 'great war', 'ww1 soldiers', 'trenches', 'first world war');
+    } else if (description.includes('world war ii') || description.includes('ww2') || (year >= 1939 && year <= 1945)) {
+      terms.push('world war 2', 'ww2', 'second world war', 'ww2 soldiers', 'world war two');
+    } else if (description.includes('civil war') || (year >= 1861 && year <= 1865)) {
+      terms.push('american civil war', 'civil war soldiers', 'civil war battle', 'civil war');
+    } else if (description.includes('revolution') || description.includes('revolutionary')) {
+      terms.push('revolutionary war', 'american revolution', 'colonial america', 'george washington', 'continental army');
+    } else {
+      terms.push(`war ${year}`, `battle ${year}`, 'military history');
+    }
+  }
+
+  // PRIORITY 2: Political/diplomatic themes
+  if (description.includes('treaty') || description.includes('agreement') || description.includes('signed')) {
+    terms.push('treaty signing', 'diplomacy', 'political leaders', `${year} politics`);
+  }
+
+  // PRIORITY 3: Discovery/exploration themes
+  if (description.includes('discover') || description.includes('expedition') || description.includes('explorer')) {
+    terms.push('exploration', 'discovery', 'explorers', `${year} exploration`);
+  }
+
+  // PRIORITY 4: Scientific/innovation themes
+  if (description.includes('invent') || description.includes('patent') || description.includes('discover')) {
+    terms.push('invention', 'innovation', 'science history', `${year} technology`);
+  }
+
+  // PRIORITY 5: Era-based terms (more generic, come after specific themes)
   if (year < 500) {
     terms.push('ancient history', 'antiquity', 'ancient civilization');
   } else if (year >= 500 && year < 1500) {
     terms.push('medieval', 'middle ages', 'medieval history');
   } else if (year >= 1500 && year < 1800) {
-    terms.push('renaissance', 'early modern', '17th century', '18th century');
+    // For 1500-1800, check if it's actually Revolutionary War era
+    if (year >= 1775 && year <= 1783) {
+      // Already added Revolutionary War terms above, add era as backup
+      terms.push('18th century', 'colonial america', 'early american history');
+    } else {
+      terms.push('early modern', '17th century', '18th century');
+    }
   } else if (year >= 1800 && year < 1900) {
     terms.push('19th century', 'victorian era', '1800s');
   } else if (year >= 1900 && year < 1950) {
@@ -35,42 +71,12 @@ function extractThematicTerms(event) {
     terms.push('mid 20th century', 'post war era', 'modern history');
   }
 
-  // War/conflict themes
-  if (description.includes('war') || description.includes('battle')) {
-    if (description.includes('world war i') || description.includes('ww1') || (year >= 1914 && year <= 1918)) {
-      terms.push('world war 1', 'great war', 'ww1 soldiers', 'trenches');
-    } else if (description.includes('world war ii') || description.includes('ww2') || (year >= 1939 && year <= 1945)) {
-      terms.push('world war 2', 'ww2', 'second world war', 'ww2 soldiers');
-    } else if (description.includes('civil war') || (year >= 1861 && year <= 1865)) {
-      terms.push('american civil war', 'civil war soldiers', 'civil war battle');
-    } else if (description.includes('revolution') || description.includes('revolutionary')) {
-      terms.push('revolutionary war', 'american revolution', 'colonial america');
-    } else {
-      terms.push(`war ${year}`, `battle ${year}`, 'military history');
-    }
-  }
-
-  // Political/diplomatic themes
-  if (description.includes('treaty') || description.includes('agreement') || description.includes('signed')) {
-    terms.push('treaty signing', 'diplomacy', 'political leaders', `${year} politics`);
-  }
-
-  // Discovery/exploration themes
-  if (description.includes('discover') || description.includes('expedition') || description.includes('explorer')) {
-    terms.push('exploration', 'discovery', 'explorers', `${year} exploration`);
-  }
-
-  // Scientific/innovation themes
-  if (description.includes('invent') || description.includes('patent') || description.includes('discover')) {
-    terms.push('invention', 'innovation', 'science history', `${year} technology`);
-  }
-
-  // Location-based (if US location mentioned)
+  // PRIORITY 6: Location-based (if US location mentioned)
   if (description.includes('america') || description.includes('united states') || description.includes('washington')) {
     terms.push('american history', 'united states history');
   }
 
-  // Add year + general history as last resort
+  // PRIORITY 7: Year + general history as last resort
   terms.push(`${year} history`, `historical ${year}`, `history ${Math.floor(year / 10) * 10}s`);
 
   return terms;
