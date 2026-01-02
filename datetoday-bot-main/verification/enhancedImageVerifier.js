@@ -7,6 +7,7 @@
 import { openai } from '../openaiCommon.js';
 import { smartFetchImage, simpleFetchImage } from './smartImageFetcher.js';
 import { IMAGE_SOURCE_CONFIG, calculateImageScore } from './imageSourceConfig.js';
+import { fetchThematicFallbackImage, verifyThematicImage } from './thematicFallback.js';
 
 /**
  * Enhanced GPT-4 Vision verification with quality and accuracy scoring
@@ -164,13 +165,40 @@ export async function fetchVerifiedImage(event, tweetContent) {
       return await simpleFetchImage(event);
     }
 
-    // Step 1: Fetch candidates from multiple premium sources
-    console.log(`[EnhancedVerifier] 📡 Fetching from premium sources (parallel)...`);
+    // TIER 1: Fetch candidates from multiple premium sources (exact match)
+    console.log(`[EnhancedVerifier] 📡 TIER 1: Fetching exact-match images from premium sources (parallel)...`);
     const candidates = await smartFetchImage(event, tweetContent);
 
     if (!candidates || candidates.length === 0) {
-      console.log(`[EnhancedVerifier] ❌ No images found from any source`);
-      return null;
+      console.log(`[EnhancedVerifier] ❌ No exact-match images found`);
+      console.log(`[EnhancedVerifier] → Trying THEMATIC FALLBACK...`);
+
+      // Go straight to thematic fallback
+      try {
+        const fallbackCandidate = await fetchThematicFallbackImage(event);
+
+        if (!fallbackCandidate) {
+          console.log(`[EnhancedVerifier] ❌ No thematic fallback images found - posting text-only`);
+          return null;
+        }
+
+        const thematicVerification = await verifyThematicImage(fallbackCandidate, event, openai);
+
+        if (thematicVerification.thematicScore >= 50) {
+          console.log(`[EnhancedVerifier] ✅ THEMATIC FALLBACK APPROVED (score: ${thematicVerification.thematicScore}/100)`);
+          console.log(`[EnhancedVerifier] → Source: ${thematicVerification.source}`);
+          console.log(`[EnhancedVerifier] → Search: "${thematicVerification.thematicTerm}"`);
+          console.log(`[EnhancedVerifier] → ${thematicVerification.reasoning}`);
+          return fallbackCandidate.buffer;
+        } else {
+          console.log(`[EnhancedVerifier] ❌ Thematic fallback rejected (score: ${thematicVerification.thematicScore}/100)`);
+          console.log(`[EnhancedVerifier] → Posting text-only`);
+          return null;
+        }
+      } catch (fallbackError) {
+        console.error(`[EnhancedVerifier] Thematic fallback error: ${fallbackError.message}`);
+        return null;
+      }
     }
 
     console.log(`[EnhancedVerifier] 🔍 Verifying ${candidates.length} candidates with GPT-4 Vision...`);
@@ -216,11 +244,41 @@ export async function fetchVerifiedImage(event, tweetContent) {
       return best.buffer;
     }
 
-    console.log(`[EnhancedVerifier] ❌ All images REJECTED (best score: ${best.verification.combinedScore})`);
+    console.log(`[EnhancedVerifier] ❌ All exact-match images REJECTED (best score: ${best.verification.combinedScore})`);
     console.log(`[EnhancedVerifier] → ${best.verification.reasoning}`);
-    console.log(`[EnhancedVerifier] → Posting text-only`);
+    console.log(`[EnhancedVerifier] → Trying THEMATIC FALLBACK...`);
 
-    return null;
+    // TIER 2: Thematic/Period-Appropriate Fallback
+    // Lower standards - just needs to reflect the era/theme
+    try {
+      const fallbackCandidate = await fetchThematicFallbackImage(event);
+
+      if (!fallbackCandidate) {
+        console.log(`[EnhancedVerifier] ❌ No thematic fallback images found - posting text-only`);
+        return null;
+      }
+
+      // Verify thematic appropriateness (relaxed standards)
+      const thematicVerification = await verifyThematicImage(fallbackCandidate, event, openai);
+
+      // Accept if thematic score >= 50 (lower threshold for fallback)
+      if (thematicVerification.thematicScore >= 50) {
+        console.log(`[EnhancedVerifier] ✅ THEMATIC FALLBACK APPROVED (score: ${thematicVerification.thematicScore}/100)`);
+        console.log(`[EnhancedVerifier] → Source: ${thematicVerification.source}`);
+        console.log(`[EnhancedVerifier] → Search: "${thematicVerification.thematicTerm}"`);
+        console.log(`[EnhancedVerifier] → ${thematicVerification.reasoning}`);
+        return fallbackCandidate.buffer;
+      } else {
+        console.log(`[EnhancedVerifier] ❌ Thematic fallback also rejected (score: ${thematicVerification.thematicScore}/100)`);
+        console.log(`[EnhancedVerifier] → ${thematicVerification.reasoning}`);
+        console.log(`[EnhancedVerifier] → Posting text-only`);
+        return null;
+      }
+    } catch (fallbackError) {
+      console.error(`[EnhancedVerifier] Thematic fallback error: ${fallbackError.message}`);
+      console.log(`[EnhancedVerifier] → Posting text-only`);
+      return null;
+    }
 
   } catch (error) {
     console.error(`[EnhancedVerifier] Error: ${error.message}`);
