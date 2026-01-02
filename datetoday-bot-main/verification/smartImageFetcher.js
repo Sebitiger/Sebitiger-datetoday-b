@@ -6,6 +6,7 @@
 import { fetchEventImage } from '../fetchImage.js';
 import { fetchFromLibraryOfCongress, fetchFromSmithsonian, fetchFromWikimediaCommons } from '../fetchImage.js';
 import { checkImageQuality } from './imageVerifier.js';
+import { wasImageRecentlyUsed } from './imageDiversity.js';
 import {
   IMAGE_SOURCE_CONFIG,
   getTopSources,
@@ -121,6 +122,17 @@ async function filterByQuality(candidates) {
 
   for (const candidate of candidates) {
     try {
+      // Check if image was recently used (diversity check)
+      const recentlyUsed = await wasImageRecentlyUsed(
+        candidate.buffer,
+        candidate.metadata.url || candidate.metadata.imageUrl
+      );
+
+      if (recentlyUsed) {
+        console.log(`[SmartFetcher] ⚠️  Skipping ${candidate.metadata.source}: Image was recently used (diversity filter)`);
+        continue;
+      }
+
       const qualityCheck = await checkImageQuality(candidate.buffer);
 
       if (!qualityCheck.passed) {

@@ -10,6 +10,7 @@
 
 import { fetchFromLibraryOfCongress, fetchFromWikimediaCommons, fetchEventImage } from '../fetchImage.js';
 import { checkImageQuality } from './imageVerifier.js';
+import { wasImageRecentlyUsed } from './imageDiversity.js';
 
 /**
  * Extract thematic search terms from event
@@ -106,6 +107,13 @@ export async function fetchThematicFallbackImage(event) {
         const metadata = locResult.metadata || { source: 'Library of Congress', searchTerm: term };
 
         if (Buffer.isBuffer(buffer)) {
+          // Check diversity - skip if recently used
+          const recentlyUsed = await wasImageRecentlyUsed(buffer, metadata.url || metadata.imageUrl);
+          if (recentlyUsed) {
+            console.log(`[ThematicFallback] ⚠️  Skipping LOC image for "${term}": Recently used (trying next term)`);
+            continue;
+          }
+
           const qualityCheck = await checkImageQuality(buffer);
           if (qualityCheck.passed) {
             console.log(`[ThematicFallback] ✅ Found from Library of Congress: "${term}"`);
@@ -133,6 +141,13 @@ export async function fetchThematicFallbackImage(event) {
         const metadata = wikimediaResult.metadata || { source: 'Wikimedia Commons', searchTerm: term };
 
         if (Buffer.isBuffer(buffer)) {
+          // Check diversity - skip if recently used
+          const recentlyUsed = await wasImageRecentlyUsed(buffer, metadata.url || metadata.imageUrl);
+          if (recentlyUsed) {
+            console.log(`[ThematicFallback] ⚠️  Skipping Wikimedia image for "${term}": Recently used (trying next term)`);
+            continue;
+          }
+
           const qualityCheck = await checkImageQuality(buffer);
           if (qualityCheck.passed) {
             console.log(`[ThematicFallback] ✅ Found from Wikimedia Commons: "${term}"`);
@@ -156,6 +171,13 @@ export async function fetchThematicFallbackImage(event) {
     try {
       const wikipediaBuffer = await fetchEventImage({ ...event, description: term }, false);
       if (wikipediaBuffer && Buffer.isBuffer(wikipediaBuffer)) {
+        // Check diversity - skip if recently used
+        const recentlyUsed = await wasImageRecentlyUsed(wikipediaBuffer, null);
+        if (recentlyUsed) {
+          console.log(`[ThematicFallback] ⚠️  Skipping Wikipedia image for "${term}": Recently used (trying next term)`);
+          continue;
+        }
+
         const qualityCheck = await checkImageQuality(wikipediaBuffer);
         if (qualityCheck.passed) {
           console.log(`[ThematicFallback] ✅ Found from Wikipedia: "${term}"`);
