@@ -11,6 +11,11 @@ const API_TIMEOUT = 10000;
  * Checks if event is too broad/generic (lacks specific details)
  */
 function isEventTooBroad(event) {
+  // Safety check: filter out events with no description
+  if (!event.description || typeof event.description !== 'string') {
+    return true; // Treat as too broad if no description
+  }
+
   const desc = event.description.toLowerCase();
   
   // Too generic indicators
@@ -102,6 +107,11 @@ const ICONIC_EVENTS = [
  * Check if event matches an iconic, well-known historical event
  */
 function isIconicEvent(event) {
+  // Safety check
+  if (!event.description || typeof event.description !== 'string') {
+    return false;
+  }
+
   const desc = event.description.toLowerCase();
   const year = event.year?.toString() || "";
   
@@ -126,6 +136,11 @@ function isIconicEvent(event) {
  * NOW PRIORITIZES ICONIC, WELL-KNOWN EVENTS
  */
 function scoreEventMajority(event) {
+  // Safety check: return very low score if no description
+  if (!event.description || typeof event.description !== 'string') {
+    return -1000; // Very low score to filter out
+  }
+
   const desc = event.description.toLowerCase();
   let score = 0;
 
@@ -393,6 +408,11 @@ function scoreEventMajority(event) {
  */
 function filterEvents(events) {
   return events.filter((ev) => {
+    // Safety check: filter out events with no description
+    if (!ev.description || typeof ev.description !== 'string') {
+      return false;
+    }
+
     const desc = ev.description.toLowerCase();
 
     // Basic quality checks

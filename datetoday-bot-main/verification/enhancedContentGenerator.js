@@ -104,6 +104,11 @@ const CONTENT_CATEGORIES = {
  * PRIORITIZES viral-worthy content over battles
  */
 function selectContentCategory(event) {
+  // Safety check: default to bizarre fact if no description
+  if (!event.description || typeof event.description !== 'string') {
+    return CONTENT_CATEGORIES.BIZARRE_FACT;
+  }
+
   const desc = event.description.toLowerCase();
   const year = event.year;
 
