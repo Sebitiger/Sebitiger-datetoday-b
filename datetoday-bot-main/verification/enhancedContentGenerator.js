@@ -11,124 +11,158 @@ import { openai } from '../openaiCommon.js';
 import { verifyAndDecide, buildCorrectionPrompt } from './factChecker.js';
 import { addToQueue } from './reviewQueue.js';
 
-// ENHANCED VOICE - Storyteller, not analyst
-const VOICE_SYSTEM_PROMPT = `You are a master historical storyteller. Your goal: make history feel ALIVE.
+// VIRAL VOICE - Brief, shocking, accessible
+const VOICE_SYSTEM_PROMPT = `You are a viral history storyteller. Your goal: stop the scroll.
 
-VOICE CHARACTERISTICS:
-- Cinematic and visual - paint scenes
-- Intimate and human - focus on PEOPLE
-- Suspenseful - create tension
-- Deadpan delivery - no enthusiasm, let facts shock
-- Conversational - write like talking to a friend
-- NO hashtags, NO emojis, NO exclamation marks
-- NO modern parallels unless absolutely essential (overused)
-- NO em dashes (—), use regular dashes (-) or periods
+CRITICAL RULES:
+- MAXIMUM 280 characters (Twitter limit)
+- 2-3 sentences MAXIMUM
+- Hook FIRST (shocking fact leads)
+- Global audience (not just Americans)
+- NO hashtags, NO emojis, NO modern parallels
+- Simple language (10th grade reading level)
 
-WRITING RULES:
-1. SHORT SENTENCES. Punchy. Like this.
-2. Use SPECIFIC VISUAL details (colors, sounds, actions)
-3. Focus on ONE person or ONE moment
-4. Include emotional stakes (what could be lost/gained)
-5. Make readers FEEL something (shock, awe, injustice, triumph)
-6. Write what HAPPENED, not what you think about it
+STRUCTURE:
+1. SHOCKING HOOK (1 sentence that stops scroll)
+2. BRIEF CONTEXT (1 sentence explaining)
+3. IMPACT (1 sentence showing stakes) - OPTIONAL
+
+VOICE:
+- Punchy and fast
+- Specific names, dates, numbers
+- Deadpan delivery (facts speak for themselves)
+- Accessible to NON-historians
+
+EXAMPLES OF PERFECT LENGTH:
+"Cleopatra lived closer to the iPhone than to the pyramids. 2,500 years separated her from pyramid construction. Only 2,000 years separate us from her."
+
+"July 4, 1776. America declared independence. The signer John Hancock made his signature massive so King George could read it without glasses."
 
 AVOID:
-- Generic statements ("This was important...")
-- Modern preachy parallels ("Just like today...")
-- Analytical language ("This demonstrates...")
-- Vague descriptions ("Some people..." "Many believed...")
+- Long scene-setting
+- Academic language
+- "Picture this..." "Imagine..." (just tell it)
+- Multiple paragraphs
+- Anything over 280 characters
 
-EMULATE:
-- War correspondent describing a scene
-- Friend telling you an insane story
-- Documentary narrator (Ken Burns style)
+Your job: Make history VIRAL.`;
 
-Your job: Make history UNFORGETTABLE.`;
-
-// CONTENT CATEGORIES
+// CONTENT CATEGORIES - Ranked by viral potential
 const CONTENT_CATEGORIES = {
-  HUMAN_DRAMA: {
-    name: "Human Drama",
-    description: "Personal stories with high emotional stakes",
+  BIZARRE_FACT: {
+    name: "Bizarre Fact",
+    description: "Strange truths that seem impossible",
+    engagementScore: 98,
+    examples: ["Cleopatra/iPhone timeline", "Napoleon's height myth", "Oxford older than Aztecs"]
+  },
+  INVENTION_DISCOVERY: {
+    name: "Invention/Discovery",
+    description: "Breakthroughs that changed everything",
     engagementScore: 95,
-    examples: ["Last words", "Final moments", "Personal sacrifices"]
+    examples: ["First flight", "Penicillin discovered", "Printing press invented"]
+  },
+  UNDERDOG_TRIUMPH: {
+    name: "Underdog/Comeback",
+    description: "Against-all-odds victories",
+    engagementScore: 94,
+    examples: ["Escaped slavery", "Defeated empire", "Survived impossible odds"]
   },
   SHOCKING_DETAIL: {
     name: "Shocking Detail",
-    description: "Unknown details about famous events",
-    engagementScore: 90,
-    examples: ["Hidden facts about known events", "What they never told you"]
-  },
-  ALMOST_HAPPENED: {
-    name: "Almost Happened",
-    description: "Near-misses and alternate histories",
-    engagementScore: 88,
-    examples: ["Close calls", "What if moments", "Prevented disasters"]
-  },
-  OBJECT_STORIES: {
-    name: "Object Stories",
-    description: "Objects that changed history",
-    engagementScore: 85,
-    examples: ["Letters", "Weapons", "Documents", "Artifacts"]
-  },
-  STRANGE_COINCIDENCE: {
-    name: "Strange Coincidence",
-    description: "Coincidences too bizarre to believe",
-    engagementScore: 87,
-    examples: ["Impossible timing", "Eerie connections", "Synchronicities"]
+    description: "Unknown facts about famous events",
+    engagementScore: 92,
+    examples: ["Hidden truth about known events", "What they didn't tell you"]
   },
   NUMBERS_SHOCK: {
-    name: "Numbers That Shock",
-    description: "Data-driven emotional impact",
-    engagementScore: 82,
-    examples: ["Death tolls", "Timespans", "Scale comparisons"]
+    name: "Mind-Blowing Numbers",
+    description: "Statistics that defy belief",
+    engagementScore: 90,
+    examples: ["Timeline comparisons", "Scale revelations", "Unexpected quantities"]
   },
-  INJUSTICE: {
-    name: "Historical Injustice",
-    description: "Wrongs that make you angry",
-    engagementScore: 91,
-    examples: ["Coverups", "Forgotten victims", "Systemic failures"]
+  CULTURAL_MOMENT: {
+    name: "Cultural Moment",
+    description: "Art, music, literature that changed culture",
+    engagementScore: 85,
+    examples: ["First novel", "Revolutionary artwork", "Banned book"]
   },
-  MICRO_STORY: {
-    name: "Micro-Story",
-    description: "Complete narrative in 280 characters",
-    engagementScore: 93,
-    examples: ["Beginning, middle, end", "Character arc", "Plot twist"]
+  HUMAN_DRAMA: {
+    name: "Human Drama",
+    description: "Personal stories with high emotional stakes",
+    engagementScore: 88,
+    examples: ["Last words", "Final choice", "Personal sacrifice"]
+  },
+  BATTLE_STORY: {
+    name: "Battle Story",
+    description: "Military conflicts (lowest priority)",
+    engagementScore: 70,
+    examples: ["Only if truly iconic", "Focus on human angle", "Avoid if possible"]
   }
 };
 
 /**
  * Analyze event and choose best content category
+ * PRIORITIZES viral-worthy content over battles
  */
 function selectContentCategory(event) {
   const desc = event.description.toLowerCase();
   const year = event.year;
 
-  // Check for category indicators
+  // PRIORITY 1: Bizarre facts and timeline comparisons
+  if (year < 1000 || desc.includes('oldest') || desc.includes('ancient')) {
+    return CONTENT_CATEGORIES.BIZARRE_FACT;
+  }
+
+  // PRIORITY 2: Inventions and discoveries
+  if (desc.includes('invented') || desc.includes('invention') ||
+      desc.includes('discovered') || desc.includes('discovery') ||
+      desc.includes('first') || desc.includes('breakthrough') ||
+      desc.includes('patent')) {
+    return CONTENT_CATEGORIES.INVENTION_DISCOVERY;
+  }
+
+  // PRIORITY 3: Cultural moments (art, literature, music)
+  if (desc.includes('published') || desc.includes('premiered') ||
+      desc.includes('composed') || desc.includes('painted') ||
+      desc.includes('exhibition') || desc.includes('artwork') ||
+      desc.includes('novel') || desc.includes('opera') || desc.includes('symphony')) {
+    return CONTENT_CATEGORIES.CULTURAL_MOMENT;
+  }
+
+  // PRIORITY 4: Underdog/triumph stories
+  if (desc.includes('escaped') || desc.includes('survived') ||
+      desc.includes('against odds') || desc.includes('defeated') ||
+      desc.includes('overcame') || desc.includes('triumph')) {
+    return CONTENT_CATEGORIES.UNDERDOG_TRIUMPH;
+  }
+
+  // PRIORITY 5: Mind-blowing numbers
+  if (desc.match(/\d{3,}/) || desc.includes('million') || desc.includes('thousand')) {
+    return CONTENT_CATEGORIES.NUMBERS_SHOCK;
+  }
+
+  // PRIORITY 6: Human drama
   if (desc.includes('died') || desc.includes('killed') || desc.includes('assassin') || desc.includes('execution')) {
     return CONTENT_CATEGORIES.HUMAN_DRAMA;
   }
 
-  if (desc.includes('almost') || desc.includes('prevented') || desc.includes('avoided')) {
-    return CONTENT_CATEGORIES.ALMOST_HAPPENED;
-  }
-
-  if (desc.includes('letter') || desc.includes('document') || desc.includes('telegram') || desc.includes('wrote')) {
-    return CONTENT_CATEGORIES.OBJECT_STORIES;
-  }
-
-  // Famous events get "Shocking Detail" treatment
-  const famousKeywords = ['world war', 'revolution', 'independence', 'assassination', 'battle of'];
+  // PRIORITY 7: Shocking details about famous events
+  const famousKeywords = ['world war', 'revolution', 'independence', 'assassination'];
   if (famousKeywords.some(kw => desc.includes(kw))) {
     return CONTENT_CATEGORIES.SHOCKING_DETAIL;
   }
 
-  // Default to micro-story
-  return CONTENT_CATEGORIES.MICRO_STORY;
+  // LAST RESORT: Battle stories (lowest engagement)
+  if (desc.includes('battle') || desc.includes('war')) {
+    return CONTENT_CATEGORIES.BATTLE_STORY;
+  }
+
+  // Default to bizarre fact (most viral)
+  return CONTENT_CATEGORIES.BIZARRE_FACT;
 }
 
 /**
  * Generate viral-optimized content prompts by category
+ * ALL PROMPTS ENFORCE 280 CHARACTER LIMIT
  */
 function buildViralPrompt(event, category) {
   const baseInfo = `Year: ${event.year}
@@ -136,178 +170,153 @@ Event: ${event.description}
 Date: ${event.monthName} ${event.day}`;
 
   const categoryPrompts = {
-    [CONTENT_CATEGORIES.HUMAN_DRAMA.name]: `${baseInfo}
+    [CONTENT_CATEGORIES.BIZARRE_FACT.name]: `${baseInfo}
 
-GOAL: Tell ONE person's emotional story
+Create a viral tweet that makes people say "WHAT?!"
+
+RULES:
+- MAXIMUM 280 characters
+- 2-3 sentences only
+- Lead with the bizarre fact
+- Simple language (global audience)
+- Specific numbers/names
 
 STRUCTURE:
-1. WHO: One person at the center
-2. MOMENT: Specific moment of high stakes
-3. CHOICE/ACTION: What they did
-4. OUTCOME: What happened (surprising if possible)
+1. Shocking fact FIRST
+2. Brief explanation
+3. Optional: why it matters
 
-REQUIREMENTS:
-- Focus on ONE person's perspective
-- Use visual details (what they saw, heard, felt)
-- Include emotional stakes (life/death, love/loss, honor/shame)
-- Be specific: names, ages, exact words if known
-- 4-8 short sentences
-- 280 chars max
-- NO modern parallels
+EXAMPLE:
+"Oxford University existed 300 years before the Aztec Empire. Teaching started at Oxford in 1096. The Aztecs founded Tenochtitlan in 1325."`,
 
-EXAMPLE STRUCTURE:
-"[Person's name], age [X], [specific action]. [Visual detail]. [Stakes]. [Outcome]. [Final image]."`,
+    [CONTENT_CATEGORIES.INVENTION_DISCOVERY.name]: `${baseInfo}
+
+Create viral tweet about breakthrough discovery/invention.
+
+RULES:
+- MAXIMUM 280 characters
+- 2-3 sentences only
+- Hook first (the "wow" moment)
+- Global accessible language
+
+STRUCTURE:
+1. Discovery/invention announced
+2. Brief impact/significance
+3. Optional: surprising detail
+
+EXAMPLE:
+"January 15, 1759. The British Museum opened to the public. First major national museum free to all. Democracy in action through knowledge."`,
+
+    [CONTENT_CATEGORIES.UNDERDOG_TRIUMPH.name]: `${baseInfo}
+
+Create viral underdog story - against-all-odds victory.
+
+RULES:
+- MAXIMUM 280 characters
+- 2-3 sentences only
+- Lead with impossible odds
+- Then reveal triumph
+
+STRUCTURE:
+1. The impossible situation
+2. The triumph/victory
+3. Optional: impact
+
+EXAMPLE:
+"Harriet Tubman escaped slavery at 27. Then returned to the South 13 times to free 70 more. Never lost a single person. They called her Moses."`,
 
     [CONTENT_CATEGORIES.SHOCKING_DETAIL.name]: `${baseInfo}
 
-GOAL: Reveal shocking unknown detail about famous event
+Reveal shocking unknown detail about famous event.
+
+RULES:
+- MAXIMUM 280 characters
+- 2-3 sentences only
+- "You know X. You don't know Y." structure works well
+- Specific facts only
 
 STRUCTURE:
-1. SETUP: "You know [famous event]"
-2. REVEAL: "You don't know [shocking detail]"
-3. EVIDENCE: Specific facts proving it
-4. IMPACT: Why it matters
+1. Reference famous event
+2. Reveal hidden detail
+3. Specific evidence
 
-REQUIREMENTS:
-- Contrast known vs unknown
-- Use specific numbers, names, quotes
-- Visual details of the hidden story
-- 4-7 short sentences
-- 280 chars max
-- NO "this shows us" or modern parallels
-
-EXAMPLE STRUCTURE:
-"You know [event]. You don't know [detail]. [Specific fact]. [Specific fact]. [Impact]."`,
-
-    [CONTENT_CATEGORIES.ALMOST_HAPPENED.name]: `${baseInfo}
-
-GOAL: Show how close history came to being different
-
-STRUCTURE:
-1. WHAT ALMOST HAPPENED: Specific alternate outcome
-2. HOW CLOSE: Exact margin (minutes, feet, one decision)
-3. WHO/WHAT PREVENTED: Specific person or moment
-4. STAKES: What was at risk
-
-REQUIREMENTS:
-- Emphasize "almost" - create tension
-- Specific margins (30 minutes, 10 feet, one vote)
-- Visual description of the near-miss moment
-- 4-6 sentences
-- 280 chars max
-
-EXAMPLE STRUCTURE:
-"[X] almost happened. [Specific margin]. [Who/what stopped it]. [What was at stake]. [Final image]."`,
-
-    [CONTENT_CATEGORIES.OBJECT_STORIES.name]: `${baseInfo}
-
-GOAL: Tell history through ONE specific object
-
-STRUCTURE:
-1. OBJECT: What it was (specific, visual)
-2. MOMENT: When/how it was used
-3. IMPACT: What changed because of it
-4. FATE: What happened to the object
-
-REQUIREMENTS:
-- Focus on THE object, not general category
-- Physical description (size, color, material if relevant)
-- Specific numbers (170 words, 6 pages, etc.)
-- Trace cause and effect
-- 4-7 sentences
-- 280 chars max
-
-EXAMPLE STRUCTURE:
-"One [object]. [Physical detail]. [When used]. [Impact]. [Object's fate]."`,
-
-    [CONTENT_CATEGORIES.STRANGE_COINCIDENCE.name]: `${baseInfo}
-
-GOAL: Highlight bizarre coincidence that seems impossible
-
-STRUCTURE:
-1. COINCIDENCE: What matched impossibly
-2. SPECIFICS: Exact details that align
-3. ODDS: How unlikely (if quantifiable)
-4. IMPACT: Optional - if it mattered
-
-REQUIREMENTS:
-- Emphasize exact matches (same day, same hour, same place)
-- Use numbers and dates precisely
-- Build sense of "what are the odds?"
-- 4-6 sentences
-- 280 chars max
-- Let the coincidence speak for itself
-
-EXAMPLE STRUCTURE:
-"[Person A] and [Person B] both [action]. Same [day/time/place]. [Specific match]. [Specific match]. [Optional reaction]."`,
+EXAMPLE:
+"You know the Titanic sank in 1912. You don't know the band kept playing as it went down. All 8 musicians drowned. Not one tried to save himself."`,
 
     [CONTENT_CATEGORIES.NUMBERS_SHOCK.name]: `${baseInfo}
 
-GOAL: Use numbers to create emotional impact
+Use shocking numbers/statistics for impact.
 
-STRUCTURE:
-1. NUMBER: The shocking statistic
-2. CONTEXT: What it meant for real people
-3. COMPARISON: Scale (if helpful)
-4. HIDDEN TRUTH: What the numbers don't show
-
-REQUIREMENTS:
+RULES:
+- MAXIMUM 280 characters
+- 2-3 sentences only
 - Lead with the number
-- Translate to human impact
-- Use contrasts (official vs real, counted vs uncounted)
-- Specific examples of individuals in the numbers
-- 4-7 sentences
-- 280 chars max
-
-EXAMPLE STRUCTURE:
-"[Number] [what]. [Context about people]. [Official vs reality]. [Hidden truth]."`,
-
-    [CONTENT_CATEGORIES.INJUSTICE.name]: `${baseInfo}
-
-GOAL: Make readers feel the injustice
+- Make it human/relatable
 
 STRUCTURE:
-1. WRONG: What unjust thing happened
-2. VICTIM: Specific person/group affected
-3. PERPETRATOR: Who did it or allowed it
-4. SCALE: How bad it was
-5. RESOLUTION: What happened (often: nothing)
+1. The shocking number
+2. What it meant
+3. Comparison for scale (optional)
 
-REQUIREMENTS:
-- Specific victims with names when possible
-- Concrete actions and consequences
-- Factual tone (let the facts create anger)
-- No editorializing - facts speak for themselves
-- 5-8 sentences
-- 280 chars max
+EXAMPLE:
+"The Great Wall of China took 2,000 years to build. Over 1 million workers died during construction. Their bodies were buried inside the wall."`,
 
-EXAMPLE STRUCTURE:
-"[Person/group] [what happened to them]. [Who did it]. [Scale]. [What should have happened]. [What actually happened]."`,
+    [CONTENT_CATEGORIES.CULTURAL_MOMENT.name]: `${baseInfo}
 
-    [CONTENT_CATEGORIES.MICRO_STORY.name]: `${baseInfo}
+Create viral tweet about art/culture/literature breakthrough.
 
-GOAL: Complete narrative arc in one tweet
+RULES:
+- MAXIMUM 280 characters
+- 2-3 sentences only
+- Make it accessible (not academic)
+- Show why it mattered
 
 STRUCTURE:
-1. SETUP: Scene, character, situation
-2. CONFLICT: Problem or tension
-3. ACTION: What happened
-4. RESOLUTION: Outcome (surprising if possible)
+1. The cultural moment
+2. Why it was revolutionary
+3. Optional: lasting impact
 
-REQUIREMENTS:
-- Beginning, middle, end
-- One clear protagonist
-- Specific visual details
-- Active voice, present or past tense
-- Tension and payoff
-- 4-8 short sentences
-- 280 chars max
+EXAMPLE:
+"1937. Picasso unveiled Guernica. 25-foot painting of bombing horror. Changed how the world saw war art. Still hangs as anti-war symbol today."`,
 
-EXAMPLE STRUCTURE:
-"[Setup]. [Conflict]. [Action]. [Action]. [Resolution]. [Final image]."`,
+    [CONTENT_CATEGORIES.HUMAN_DRAMA.name]: `${baseInfo}
+
+Tell ONE person's dramatic moment.
+
+RULES:
+- MAXIMUM 280 characters
+- 2-3 sentences only
+- Focus on one person
+- Emotional stakes clear
+
+STRUCTURE:
+1. Person and high-stakes moment
+2. Their choice/action
+3. Outcome
+
+EXAMPLE:
+"Sophie Scholl was 21 when Nazis caught her distributing anti-Hitler leaflets. Refused to recant. Executed by guillotine days later. 'Such a fine sunny day.'"`,
+
+    [CONTENT_CATEGORIES.BATTLE_STORY.name]: `${baseInfo}
+
+Battle story - focus on HUMAN angle, not tactics.
+
+RULES:
+- MAXIMUM 280 characters
+- 2-3 sentences only
+- Human stakes (not strategy)
+- Accessible to non-military audience
+
+STRUCTURE:
+1. Key human moment in battle
+2. Stakes/significance
+3. Outcome
+
+EXAMPLE:
+"Agincourt, 1415. English longbowmen, starving and outnumbered 5 to 1, faced French knights. Mud saved them. French cavalry drowned in it. England won."`,
   };
 
-  return categoryPrompts[category.name] || categoryPrompts[CONTENT_CATEGORIES.MICRO_STORY.name];
+  return categoryPrompts[category.name] || categoryPrompts[CONTENT_CATEGORIES.BIZARRE_FACT.name];
 }
 
 /**
@@ -507,8 +516,8 @@ async function generateContent(prompt) {
       { role: 'system', content: VOICE_SYSTEM_PROMPT },
       { role: 'user', content: prompt }
     ],
-    temperature: 0.9, // Higher for more creative, emotional content
-    max_tokens: 500
+    temperature: 0.8, // High creativity but controlled
+    max_tokens: 150  // REDUCED: Force brevity (280 chars ≈ 70 tokens)
   });
 
   return response.choices[0].message.content.trim();

@@ -79,12 +79,23 @@ const ICONIC_EVENTS = [
   "shakespeare", "da vinci", "leonardo", "michelangelo", "galileo", "newton", "darwin", "einstein",
   "lincoln", "washington", "napoleon bonaparte",
   
-  // Major dates (iconic years)
-  "1066", "1492", "1776", "1789", "1914", "1917", "1939", "1941", "1945",
-  
+  // Major dates (iconic years - GLOBAL not just US)
+  "1066", "1453", "1492", "1789", "1914", "1945", "1969",
+
   // Famous places/events
   "berlin wall", "iron curtain", "cold war", "space race", "arms race",
-  "holocaust", "nuremberg", "hiroshima", "nagasaki"
+  "holocaust", "nuremberg", "hiroshima", "nagasaki",
+
+  // GLOBAL DIVERSITY ADDITIONS
+  "silk road", "terracotta", "forbidden city", "ming dynasty", "qing dynasty",
+  "ottoman empire", "mughal empire", "safavid", "aztec", "maya", "inca",
+  "zulu", "ashanti", "mali empire", "mansa musa", "timbuktu",
+  "edo period", "meiji", "tokugawa", "samurai", "shogun",
+  "mahatma gandhi", "nelson mandela", "ho chi minh", "mao zedong",
+  "taj mahal", "machu picchu", "angkor wat", "petra",
+  "haitian revolution", "bolivar", "mexican revolution", "cuban revolution",
+  "indian independence", "partition of india", "opium war",
+  "meiji restoration", "boxer rebellion", "taiping rebellion"
 ];
 
 /**
@@ -129,43 +140,70 @@ function scoreEventMajority(event) {
     score -= 30; // Reduced from 50 to 30 - allow more diverse events
   }
 
-  // PENALIZE 20th century wars to reduce over-focus (user feedback: too much WW1/WW2)
+  // HEAVILY PENALIZE 20th century wars (user wants less war content)
   if (desc.includes("world war") && (event.year >= 1914 && event.year <= 1945)) {
-    score -= 30; // Penalize WW1/WW2 to reduce frequency
+    score -= 50; // INCREASED penalty: too much WW1/WW2
   }
   if (desc.includes("treaty of versailles") || desc.includes("versailles treaty")) {
-    score -= 20; // Reduce Versailles treaty posts (user example shows it's repetitive)
+    score -= 30; // INCREASED penalty: repetitive
   }
-  
-  // Major wars and conflicts (but less boost for 20th century)
-  if (desc.includes("world war") || desc.includes("civil war") || desc.includes("revolution")) {
-    if (event.year < 1900) {
-      score += 50; // Higher boost for older wars
-    } else {
-      score += 30; // Lower boost for 20th century wars
-    }
+
+  // PENALIZE US-specific wars (reduce US bias)
+  if (desc.includes("civil war") && (event.year >= 1861 && event.year <= 1865)) {
+    score -= 40; // US Civil War appears too often
   }
-  if (desc.includes("battle") && /battle of [A-Z]/.test(event.description)) {
-    if (event.year < 1900) {
-      score += 40; // Named battles from older periods
-    } else {
-      score += 25; // Lower for 20th century battles
-    }
+  if (desc.includes("revolutionary war") || desc.includes("american revolution")) {
+    score -= 35; // Revolutionary War appears too often
+  }
+
+  // DEPRIORITIZE battles generally (lowest engagement per user)
+  if (desc.includes("battle")) {
+    score -= 20; // Battles have low viral potential
   }
   if (desc.includes("war") || desc.includes("invasion")) {
+    score -= 10; // Wars less interesting than discoveries/culture
+  }
+
+  // Only boost NON-US wars/revolutions slightly
+  if (desc.includes("revolution") && !desc.includes("american")) {
     if (event.year < 1900) {
-      score += 30;
-    } else {
-      score += 20; // Lower for recent wars
+      score += 25; // Non-US revolutions only
     }
   }
   
+  // GEOGRAPHIC DIVERSITY BOOSTS (reduce Western bias)
+  // Asian history
+  if (desc.match(/\b(china|chinese|japan|japanese|korea|korean|india|indian|persia|persian|mongol|silk road|dynasty)\b/i)) {
+    score += 50; // Major boost for Asian history
+  }
+  // African history
+  if (desc.match(/\b(africa|african|egypt|egyptian|ethiopia|ethiopian|mali|zulu|ashanti|mansa musa)\b/i)) {
+    score += 55; // Highest boost - African history underrepresented
+  }
+  // Latin American history
+  if (desc.match(/\b(mexico|mexican|brazil|brazilian|argentina|peru|aztec|maya|inca|bolivar|latin america)\b/i)) {
+    score += 50; // Major boost for Latin American history
+  }
+  // Middle Eastern history
+  if (desc.match(/\b(ottoman|baghdad|damascus|jerusalem|arabia|arabic|muslim|islam|caliphate)\b/i)) {
+    score += 50; // Major boost for Middle Eastern history
+  }
+  // Indigenous/Native history
+  if (desc.match(/\b(indigenous|native|aboriginal|maori|polynesian)\b/i)) {
+    score += 55; // Very underrepresented
+  }
+
+  // PENALIZE overly US-centric events
+  if (desc.match(/\b(united states|america|american)\b/i) && !desc.includes("native american")) {
+    score -= 25; // Reduce US content frequency
+  }
+
   // BROADER TOPICS: Science and technology (expanded)
   if (desc.includes("discovered") || desc.includes("discovery")) {
-    score += 35; // Increased from 30 - scientific discoveries are important
+    score += 40; // INCREASED: discoveries are viral
   }
   if (desc.includes("invention") || desc.includes("invented")) {
-    score += 35; // Increased from 30 - inventions shape history
+    score += 40; // INCREASED: inventions are viral
   }
   if (desc.includes("theory") || desc.includes("hypothesis")) {
     score += 30; // Scientific theories
@@ -180,24 +218,28 @@ function scoreEventMajority(event) {
     score += 25; // Technology advances
   }
   
-  // BROADER TOPICS: Arts and culture (expanded)
+  // BROADER TOPICS: Arts and culture (SIGNIFICANTLY INCREASED - more viral than battles)
   if (desc.includes("published") && /[A-Z][a-z]+/.test(event.description)) {
-    score += 30; // Increased from 20 - important publications
+    score += 45; // INCREASED: publications are shareable
   }
   if (desc.includes("premiered") || desc.includes("debut") || desc.includes("first performance")) {
-    score += 25; // Increased from 15 - cultural premieres
+    score += 40; // INCREASED: cultural moments are viral
   }
   if (desc.includes("exhibition") || desc.includes("museum") || desc.includes("gallery")) {
-    score += 20; // Art exhibitions
+    score += 35; // INCREASED: art events
   }
   if (desc.includes("composed") || desc.includes("symphony") || desc.includes("opera")) {
-    score += 25; // Musical compositions
+    score += 40; // INCREASED: musical milestones
   }
   if (desc.includes("painted") || desc.includes("sculpture") || desc.includes("artwork")) {
-    score += 25; // Artworks
+    score += 40; // INCREASED: art creation
   }
-  if (desc.includes("literature") || desc.includes("novel") || desc.includes("poetry")) {
-    score += 25; // Literary works
+  if (desc.includes("literature") || desc.includes("novel") || desc.includes("poetry") || desc.includes("book")) {
+    score += 40; // INCREASED: literary works
+  }
+  // Famous artists/writers
+  if (desc.match(/\b(picasso|van gogh|monet|rembrandt|shakespeare|tolstoy|dickens|austen|homer|virgil)\b/i)) {
+    score += 45; // Famous creators
   }
   
   // BROADER TOPICS: Exploration and geography
