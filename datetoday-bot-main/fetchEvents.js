@@ -551,7 +551,21 @@ async function selectMajorEvent(events) {
  * Selects a random event from the array (legacy function, kept for compatibility)
  */
 function selectRandomEvent(events) {
-  return events[Math.floor(Math.random() * events.length)];
+  if (!events || events.length === 0) {
+    return null;
+  }
+
+  // Filter out events with null/invalid descriptions
+  const validEvents = events.filter(e =>
+    e && e.description && typeof e.description === 'string' && e.description.trim().length > 0
+  );
+
+  if (validEvents.length === 0) {
+    // Fallback to original array if filtering removed everything
+    return events[Math.floor(Math.random() * events.length)];
+  }
+
+  return validEvents[Math.floor(Math.random() * validEvents.length)];
 }
 
 /**
@@ -579,10 +593,21 @@ export async function getRandomEvent() {
     const day = date.getDate();
 
     const usableEvents = await fetchEventsForDate(month, day);
-    
+
     // Prioritize major events for daily posts (now async to check WW limit)
     const majorEvent = await selectMajorEvent(usableEvents);
     const selectedEvent = majorEvent || selectRandomEvent(usableEvents);
+
+    // CRITICAL NULL SAFETY: Verify selected event has valid description
+    if (!selectedEvent || !selectedEvent.description || typeof selectedEvent.description !== 'string') {
+      console.error('[Events ERROR] Selected event has no valid description, retrying...');
+      // Retry with a different random event
+      const fallbackEvent = selectRandomEvent(usableEvents);
+      if (!fallbackEvent || !fallbackEvent.description || typeof fallbackEvent.description !== 'string') {
+        throw new Error('No events with valid descriptions found');
+      }
+      return formatEvent(fallbackEvent, date, false);
+    }
 
     if (majorEvent) {
       const score = scoreEventMajority(majorEvent);
@@ -609,7 +634,18 @@ export async function getEventForDate() {
     // Use major event selection for weekly threads too (now async)
     const majorEvent = await selectMajorEvent(usableEvents);
     const selectedEvent = majorEvent || selectRandomEvent(usableEvents);
-    
+
+    // CRITICAL NULL SAFETY: Verify selected event has valid description
+    if (!selectedEvent || !selectedEvent.description || typeof selectedEvent.description !== 'string') {
+      console.error('[Events ERROR] Selected event has no valid description, retrying...');
+      // Retry with a different random event
+      const fallbackEvent = selectRandomEvent(usableEvents);
+      if (!fallbackEvent || !fallbackEvent.description || typeof fallbackEvent.description !== 'string') {
+        throw new Error('No events with valid descriptions found');
+      }
+      return formatEvent(fallbackEvent, date, true);
+    }
+
     if (majorEvent) {
       const score = scoreEventMajority(majorEvent);
       console.log(`[Events] Selected major event for weekly thread (score: ${score})`);
