@@ -8,6 +8,7 @@ import { openai } from '../openaiCommon.js';
 import { smartFetchImage, simpleFetchImage } from './smartImageFetcher.js';
 import { IMAGE_SOURCE_CONFIG, calculateImageScore } from './imageSourceConfig.js';
 import { fetchThematicFallbackImage, verifyThematicImage } from './thematicFallback.js';
+import { markImageAsUsed } from './imageDiversity.js';
 
 /**
  * Enhanced GPT-4 Vision verification with quality and accuracy scoring
@@ -189,6 +190,10 @@ export async function fetchVerifiedImage(event, tweetContent) {
           console.log(`[EnhancedVerifier] → Source: ${thematicVerification.source}`);
           console.log(`[EnhancedVerifier] → Search: "${thematicVerification.thematicTerm}"`);
           console.log(`[EnhancedVerifier] → ${thematicVerification.reasoning}`);
+
+          // Mark image as used for diversity tracking
+          await markImageAsUsed(fallbackCandidate.buffer, fallbackCandidate.metadata, event.description);
+
           return fallbackCandidate.buffer;
         } else {
           console.log(`[EnhancedVerifier] ❌ Thematic fallback rejected (score: ${thematicVerification.thematicScore}/100)`);
@@ -218,6 +223,10 @@ export async function fetchVerifiedImage(event, tweetContent) {
       if (verification.verdict === 'APPROVED' && verification.combinedScore >= 85) {
         console.log(`[EnhancedVerifier] ✅ Found excellent image from ${candidate.metadata.source} (score: ${verification.combinedScore})`);
         console.log(`[EnhancedVerifier] → ${verification.visualDescription}`);
+
+        // Mark image as used for diversity tracking
+        await markImageAsUsed(candidate.buffer, candidate.metadata, event.description);
+
         return candidate.buffer;
       }
     }
@@ -234,6 +243,10 @@ export async function fetchVerifiedImage(event, tweetContent) {
     if (best.verification.combinedScore >= threshold) {
       console.log(`[EnhancedVerifier] ✅ APPROVED: ${best.metadata.source} (score: ${best.verification.combinedScore})`);
       console.log(`[EnhancedVerifier] → ${best.verification.reasoning}`);
+
+      // Mark image as used for diversity tracking
+      await markImageAsUsed(best.buffer, best.metadata, event.description);
+
       return best.buffer;
     }
 
@@ -241,6 +254,10 @@ export async function fetchVerifiedImage(event, tweetContent) {
       console.log(`[EnhancedVerifier] ⚠️  ACCEPTABLE: ${best.metadata.source} (score: ${best.verification.combinedScore})`);
       console.log(`[EnhancedVerifier] → Using it (above reject threshold)`);
       console.log(`[EnhancedVerifier] → ${best.verification.reasoning}`);
+
+      // Mark image as used for diversity tracking
+      await markImageAsUsed(best.buffer, best.metadata, event.description);
+
       return best.buffer;
     }
 
@@ -267,6 +284,10 @@ export async function fetchVerifiedImage(event, tweetContent) {
         console.log(`[EnhancedVerifier] → Source: ${thematicVerification.source}`);
         console.log(`[EnhancedVerifier] → Search: "${thematicVerification.thematicTerm}"`);
         console.log(`[EnhancedVerifier] → ${thematicVerification.reasoning}`);
+
+        // Mark image as used for diversity tracking
+        await markImageAsUsed(fallbackCandidate.buffer, fallbackCandidate.metadata, event.description);
+
         return fallbackCandidate.buffer;
       } else {
         console.log(`[EnhancedVerifier] ❌ Thematic fallback also rejected (score: ${thematicVerification.thematicScore}/100)`);
