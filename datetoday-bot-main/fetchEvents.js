@@ -3,6 +3,7 @@
 // and returns ONE random clean event.
 
 import axios from "axios";
+import { selectViralEvent } from "./viralContentSelector.js";
 
 // Default timeout for API calls (10 seconds)
 const API_TIMEOUT = 10000;
@@ -594,9 +595,10 @@ export async function getRandomEvent() {
 
     const usableEvents = await fetchEventsForDate(month, day);
 
-    // Prioritize major events for daily posts (now async to check WW limit)
-    const majorEvent = await selectMajorEvent(usableEvents);
-    const selectedEvent = majorEvent || selectRandomEvent(usableEvents);
+    // NEW: AI-POWERED VIRAL CONTENT SELECTION
+    // Uses GPT-4 to score events by engagement potential + ensures geographic diversity
+    console.log('[Events] 🚀 Using AI-powered viral content selector...');
+    const selectedEvent = await selectViralEvent(usableEvents);
 
     // CRITICAL NULL SAFETY: Verify selected event has valid description
     if (!selectedEvent || !selectedEvent.description || typeof selectedEvent.description !== 'string') {
@@ -609,12 +611,8 @@ export async function getRandomEvent() {
       return formatEvent(fallbackEvent, date, false);
     }
 
-    if (majorEvent) {
-      const score = scoreEventMajority(majorEvent);
-      console.log(`[Events] Selected major event (score: ${score})`);
-    } else {
-      console.log("[Events] No major events found, using random selection");
-    }
+    console.log(`[Events] ✅ Selected: ${selectedEvent.category || 'GENERAL'} from ${selectedEvent.region || 'Unknown'}`);
+    console.log(`[Events]    Viral Score: ${selectedEvent.viralScore?.totalScore || 'N/A'}/100`);
 
     return formatEvent(selectedEvent, date, false);
 
@@ -631,9 +629,10 @@ export async function getEventForDate() {
     const day = date.getDate();
 
     const usableEvents = await fetchEventsForDate(month, day);
-    // Use major event selection for weekly threads too (now async)
-    const majorEvent = await selectMajorEvent(usableEvents);
-    const selectedEvent = majorEvent || selectRandomEvent(usableEvents);
+
+    // NEW: AI-POWERED VIRAL CONTENT SELECTION for weekly threads
+    console.log('[Events] 🚀 Using AI-powered viral selector for weekly thread...');
+    const selectedEvent = await selectViralEvent(usableEvents);
 
     // CRITICAL NULL SAFETY: Verify selected event has valid description
     if (!selectedEvent || !selectedEvent.description || typeof selectedEvent.description !== 'string') {
@@ -646,10 +645,8 @@ export async function getEventForDate() {
       return formatEvent(fallbackEvent, date, true);
     }
 
-    if (majorEvent) {
-      const score = scoreEventMajority(majorEvent);
-      console.log(`[Events] Selected major event for weekly thread (score: ${score})`);
-    }
+    console.log(`[Events] ✅ Selected for thread: ${selectedEvent.category || 'GENERAL'} from ${selectedEvent.region || 'Unknown'}`);
+    console.log(`[Events]    Viral Score: ${selectedEvent.viralScore?.totalScore || 'N/A'}/100`);
 
     return formatEvent(selectedEvent, date, true);
 
