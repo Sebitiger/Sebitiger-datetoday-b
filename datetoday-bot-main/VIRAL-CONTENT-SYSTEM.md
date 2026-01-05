@@ -66,12 +66,14 @@ Complete redesign of event selection from **keyword-based** to **AI-powered vira
 - Overrepresented regions get -30 penalty
 - Target: ~5 posts per region per week (balanced distribution)
 
-**AGGRESSIVE US Content Limit (2% Target):**
+**SMART US Content Limit (2% Target with Quality Gate):**
 - Aggressive detection: 15+ patterns (presidents, states, events, places)
-- After just 1 US post in last 7 days → -75 massive penalty
+- After 1 US post in last 7 days:
+  - **90+ viral score:** -30 reduced penalty (globally significant events)
+  - **<90 viral score:** -75 heavy penalty (typical US wars/politics)
 - Target: Max 1 post per week (2% of 35 weekly posts)
-- Ideal: 0 US posts most weeks
-- Forces truly global diversity
+- Quality gate allows exceptional events (moon landing, MLK, etc.)
+- Blocks typical US content (Revolutionary War, domestic politics)
 
 ### 3. Selection Algorithm
 
@@ -140,19 +142,32 @@ Americas-US: 1 post ← HEAVILY PENALIZED (target: <1 per week)
 
 **Step 4: Apply Diversity Adjustments**
 ```
-Event A: 65 - 75 (MASSIVE US penalty) = -10 ❌
-Event B: 88 + 0 (Global, neutral) = 88
-Event C: 82 + 25 (Africa boost) = 107 ✅ WINNER
+Event A: "Richmond burns" (US, 65 viral score)
+  65 - 75 (heavy penalty, <90 score) = -10 ❌ REJECTED
+
+Event B: "Silk Road opens" (Global, 88 viral score)
+  88 + 0 (neutral) = 88
+
+Event C: "Mali Empire expansion" (Africa, 82 viral score)
+  82 + 25 (underrepresented boost) = 107 ✅ WINNER
+
+EXCEPTION EXAMPLE:
+Event D: "Moon landing" (US, 95 viral score)
+  95 - 30 (reduced penalty, 90+ score) = 65 ✅ ALLOWED
+  (Globally significant, not typical US war/politics)
 ```
 
 **Step 5: Select**
 ```
 Top 3:
-1. Event C (Africa, 107) - 60% chance
+1. Event C (Africa, 107) - 60% chance ← SELECTED
 2. Event B (Global, 88) - 30% chance
-3. Event A (US, 35) - 10% chance
+3. Event D (US exceptional, 65) - 10% chance
 
 Selected: Event C (Mali Empire expansion)
+
+Note: Event A (typical US) rejected despite being in top candidates
+Note: Event D (exceptional US) allowed due to 95 viral score
 ```
 
 **Result:** Globally diverse, high engagement potential, automatic balancing.

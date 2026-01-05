@@ -396,10 +396,18 @@ export async function selectViralEvent(events) {
       console.log(`[Diversity] +25 boost for ${item.region}: "${item.event.description.substring(0, 50)}..."`);
     }
 
-    // MASSIVE PENALTY for US content (target 2% = max 1 post per week)
+    // SMART US PENALTY - Quality gate for exceptional content
     if (diversity.penalize.includes(item.region)) {
-      finalScore -= 75; // INCREASED from -30 to -75 for 2% target
-      console.log(`[Diversity] 🚫 -75 HEAVY PENALTY for ${item.region}: "${item.event.description.substring(0, 50)}..."`);
+      // Quality gate: Reduced penalty for truly exceptional US content
+      if (item.viralScore.totalScore >= 90) {
+        // Allow globally significant US events (moon landing, MLK, etc.)
+        finalScore -= 30; // Reduced penalty for 90+ viral score
+        console.log(`[Diversity] ⭐ -30 REDUCED penalty for exceptional US content (${item.viralScore.totalScore}/100): "${item.event.description.substring(0, 50)}..."`);
+      } else {
+        // Heavy penalty for typical US content (wars, politics, regional events)
+        finalScore -= 75; // Heavy penalty for <90 viral score
+        console.log(`[Diversity] 🚫 -75 HEAVY PENALTY for US content (${item.viralScore.totalScore}/100): "${item.event.description.substring(0, 50)}..."`);
+      }
     }
 
     return {
