@@ -66,9 +66,12 @@ Complete redesign of event selection from **keyword-based** to **AI-powered vira
 - Overrepresented regions get -30 penalty
 - Target: ~5 posts per region per week (balanced distribution)
 
-**US Content Limit:**
-- If >50% of average regional posts are US-specific → -30 penalty
-- Forces global diversity automatically
+**AGGRESSIVE US Content Limit (2% Target):**
+- Aggressive detection: 15+ patterns (presidents, states, events, places)
+- After just 1 US post in last 7 days → -75 massive penalty
+- Target: Max 1 post per week (2% of 35 weekly posts)
+- Ideal: 0 US posts most weeks
+- Forces truly global diversity
 
 ### 3. Selection Algorithm
 
@@ -132,12 +135,12 @@ Event C: Africa
 Asia: 3 posts
 Africa: 1 post  ← UNDERREPRESENTED
 Europe: 6 posts
-Americas-US: 4 posts ← OVERREPRESENTED
+Americas-US: 1 post ← HEAVILY PENALIZED (target: <1 per week)
 ```
 
 **Step 4: Apply Diversity Adjustments**
 ```
-Event A: 65 - 30 (US penalty) = 35
+Event A: 65 - 75 (MASSIVE US penalty) = -10 ❌
 Event B: 88 + 0 (Global, neutral) = 88
 Event C: 82 + 25 (Africa boost) = 107 ✅ WINNER
 ```

@@ -203,7 +203,41 @@ export async function batchScoreEvents(events, maxConcurrent = 3) {
  */
 export function detectRegion(event) {
   const desc = event.description?.toLowerCase() || '';
+  const year = event.year || 0;
 
+  // AGGRESSIVE US DETECTION (for heavy penalty - target 2% content)
+  // Check for US-specific keywords, people, places, events
+  const usPatterns = [
+    /\b(america|american|united states|u\.s\.|usa)\b/i,
+    /\b(washington|jefferson|lincoln|roosevelt|kennedy)\b/i,
+    /\b(congress|senate|president|supreme court)\b/i,
+    /\b(virginia|massachusetts|pennsylvania|new york|california|texas)\b/i,
+    /\b(revolutionary war|civil war|independence|constitution)\b/i,
+    /\b(confederate|union|yankee|colonial america)\b/i,
+    /\b(declaration of independence|bill of rights)\b/i,
+    /\b(nasa|fbi|cia|pentagon)\b/i,
+    /\b(boston|philadelphia|richmond|atlanta|chicago|los angeles)\b/i
+  ];
+
+  for (const pattern of usPatterns) {
+    if (pattern.test(desc)) {
+      console.log(`[Region] 🇺🇸 US content detected: "${desc.substring(0, 60)}..."`);
+      return 'Americas-US'; // Special flag for aggressive penalty
+    }
+  }
+
+  // Check for US events by year (post-1776)
+  if (year >= 1776 && year < 1900) {
+    if (desc.match(/war|battle|treaty|declaration|act|law/i)) {
+      // Check if NOT explicitly international
+      if (!desc.match(/britain|france|spain|mexico|international|world/i)) {
+        console.log(`[Region] 🇺🇸 Likely US event (1776-1900): "${desc.substring(0, 60)}..."`);
+        return 'Americas-US';
+      }
+    }
+  }
+
+  // Now check for other regions
   for (const [region, keywords] of Object.entries(WORLD_REGIONS)) {
     for (const keyword of keywords) {
       if (desc.includes(keyword)) {
@@ -212,18 +246,13 @@ export function detectRegion(event) {
     }
   }
 
-  // Check year-based regions
+  // Check year-based regions for ancient/medieval
   if (event.year < 1500) {
     // Ancient/Medieval - check for civilizations
     if (desc.match(/rome|roman|greece|greek|sparta|athens/)) return 'Europe';
     if (desc.match(/egypt|africa|carthage/)) return 'Africa';
     if (desc.match(/china|dynasty|silk road|confucius/)) return 'Asia';
     if (desc.match(/maya|aztec|inca/)) return 'Americas';
-  }
-
-  // US-specific detection (for penalty)
-  if (desc.match(/\b(america|american|united states|u\.s\.|usa)\b/i)) {
-    return 'Americas-US'; // Special flag for US content
   }
 
   return 'Global'; // Default if can't determine
@@ -317,13 +346,17 @@ export async function getUnderrepresentedRegions() {
     return count < avgPerRegion * 0.7; // Less than 70% of average
   });
 
-  // Check US overrepresentation
+  // AGGRESSIVE US PENALTY - Target 2% (max ~1 post per week out of 35)
+  // Penalize if ANY US content in last 7 days (unless it's the only post that week)
   const usCount = regionCounts['Americas-US'] || 0;
-  const usOverrepresented = usCount > avgPerRegion * 0.5; // More than 50% of average
+  const targetUSPosts = 0.7; // 2% of 35 posts = 0.7 posts per week
+  const usOverrepresented = usCount >= targetUSPosts; // Penalize after even 1 post
 
   console.log(`[Diversity] Underrepresented regions: ${underrepresented.join(', ')}`);
+  console.log(`[Diversity] US posts in last 7 days: ${usCount} (target: <1, ideal: 0)`);
+
   if (usOverrepresented) {
-    console.log(`[Diversity] ⚠️  US content overrepresented (${usCount} posts in last 7 days)`);
+    console.log(`[Diversity] 🚫 US content HEAVILY PENALIZED (target 2% = max 1 post/week)`);
   }
 
   return {
@@ -363,10 +396,10 @@ export async function selectViralEvent(events) {
       console.log(`[Diversity] +25 boost for ${item.region}: "${item.event.description.substring(0, 50)}..."`);
     }
 
-    // PENALIZE overrepresented regions
+    // MASSIVE PENALTY for US content (target 2% = max 1 post per week)
     if (diversity.penalize.includes(item.region)) {
-      finalScore -= 30;
-      console.log(`[Diversity] -30 penalty for ${item.region}: "${item.event.description.substring(0, 50)}..."`);
+      finalScore -= 75; // INCREASED from -30 to -75 for 2% target
+      console.log(`[Diversity] 🚫 -75 HEAVY PENALTY for ${item.region}: "${item.event.description.substring(0, 50)}..."`);
     }
 
     return {
