@@ -125,13 +125,30 @@ Return JSON:
     // Filter 4: Detect US content in event description (backup check)
     const eventLower = (result.event || '').toLowerCase();
     const usKeywords = [
-      'america', 'united states', 'u.s.', 'usa', 'congress', 'senate',
-      'president', 'washington', 'lincoln', 'roosevelt', 'supreme court',
-      'constitutional', 'fbi', 'cia', 'nasa', 'pentagon'
+      // Country names
+      'america', 'american', 'united states', 'u.s.', 'usa',
+      // Government/institutions
+      'congress', 'senate', 'president', 'supreme court', 'constitutional',
+      'fbi', 'cia', 'nasa', 'pentagon', 'white house',
+      // Historical figures
+      'washington', 'jefferson', 'lincoln', 'roosevelt', 'kennedy', 'jackson',
+      'madison', 'adams', 'hamilton', 'franklin',
+      // Economic events (US-specific)
+      'wall street', 'federal reserve', 'stock market crash', 'great depression',
+      'panic of 18', 'panic of 19', // Catches "Panic of 1873", "Panic of 1893", etc.
+      // Regulatory/Legal
+      'antitrust', 'sherman act', 'clayton act', 'securities act',
+      'new deal', 'square deal', 'great society',
+      // Wars/conflicts
+      'civil war', 'revolutionary war', 'war of 1812', 'mexican war',
+      'confederate', 'union army', 'continental army',
+      // Places
+      'philadelphia', 'boston', 'new york', 'virginia', 'massachusetts',
+      'california', 'texas', 'manhattan'
     ];
 
     if (usKeywords.some(keyword => eventLower.includes(keyword))) {
-      console.log('[Trending] ❌ Rejected: US keywords detected');
+      console.log(`[Trending] ❌ Rejected: US keywords detected in "${result.event}"`);
       return null;
     }
 
