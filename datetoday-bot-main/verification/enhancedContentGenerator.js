@@ -173,6 +173,10 @@ function selectContentCategory(event) {
  * ALL PROMPTS ENFORCE 280 CHARACTER LIMIT
  */
 function buildViralPrompt(event, category) {
+  // CRITICAL DEBUG: Log what we're building the prompt with
+  console.log(`[EnhancedGen] 🔍 BUILDING PROMPT WITH:`);
+  console.log(`[EnhancedGen]    Event.description: "${event.description?.slice(0, 80)}..."`);
+
   const baseInfo = `Year: ${event.year}
 Event: ${event.description}
 Date: ${event.monthName} ${event.day}`;
@@ -543,6 +547,11 @@ async function generateContent(prompt) {
  * Generate enhanced tweet with category selection
  */
 export async function generateEnhancedTweet(event, options = {}) {
+  // CRITICAL DEBUG: Log the exact event we received
+  console.log(`[EnhancedGen] 🔍 RECEIVED EVENT:`);
+  console.log(`[EnhancedGen]    Year: ${event.year}`);
+  console.log(`[EnhancedGen]    Description: "${event.description?.slice(0, 80)}..."`);
+
   const category = selectContentCategory(event);
   const prompt = buildViralPrompt(event, category);
 

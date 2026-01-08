@@ -614,7 +614,14 @@ export async function getRandomEvent() {
     console.log(`[Events] ✅ Selected: ${selectedEvent.category || 'GENERAL'} from ${selectedEvent.region || 'Unknown'}`);
     console.log(`[Events]    Viral Score: ${selectedEvent.viralScore?.totalScore || 'N/A'}/100`);
 
-    return formatEvent(selectedEvent, date, false);
+    const formatted = formatEvent(selectedEvent, date, false);
+
+    // CRITICAL DEBUG: Log what we're returning
+    console.log(`[Events] 🔍 RETURNING EVENT:`);
+    console.log(`[Events]    Year: ${formatted.year}`);
+    console.log(`[Events]    Description: "${formatted.description?.slice(0, 80)}..."`);
+
+    return formatted;
 
   } catch (err) {
     console.error("[Events ERROR]", err.message);
