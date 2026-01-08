@@ -262,7 +262,10 @@ export async function fetchVerifiedImage(event, tweetContent) {
     }
 
     console.log(`[EnhancedVerifier] ❌ All exact-match images REJECTED (best score: ${best.verification.combinedScore})`);
-    console.log(`[EnhancedVerifier] → ${best.verification.reasoning}`);
+    console.log(`[EnhancedVerifier] → Source: ${best.metadata.source}`);
+    console.log(`[EnhancedVerifier] → Accuracy: ${best.verification.accuracyScore}/100, Quality: ${best.verification.qualityScore}/100`);
+    console.log(`[EnhancedVerifier] → Reasoning: ${best.verification.reasoning}`);
+    console.log(`[EnhancedVerifier] → Visual: ${best.verification.visualDescription}`);
     console.log(`[EnhancedVerifier] → Trying THEMATIC FALLBACK...`);
 
     // TIER 2: Thematic/Period-Appropriate Fallback
