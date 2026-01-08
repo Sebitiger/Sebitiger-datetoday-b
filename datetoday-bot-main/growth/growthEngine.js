@@ -23,7 +23,8 @@ export async function initializeGrowthEngine() {
 
   // Start background jobs
   await startMetricsPolling();      // Poll engagement every 6 hours
-  await startTrendingScanner();     // Scan for trending topics every 2 hours
+  // DISABLED: Trending scanner conflicts with reference account positioning
+  // await startTrendingScanner();     // Scan for trending topics every 2 hours
 
   // Run initial analysis
   await identifyViralPosts();       // Identify what's working
@@ -53,14 +54,15 @@ export async function getNextOptimizedPost(event, options = {}) {
     recommendedStyle: null
   };
 
-  // 1. Check for trending opportunity (HIGHEST PRIORITY)
-  const trending = await getNextTrendingContent();
-  if (trending && !trending.posted) {
-    console.log('🔥 [Growth] Trending opportunity available!');
-    recommendations.useTrending = true;
-    recommendations.trendingContent = trending;
-    return recommendations;
-  }
+  // 1. DISABLED: Trending conflicts with reference account positioning
+  // Reference accounts should post timeless content, not chase trending topics
+  // const trending = await getNextTrendingContent();
+  // if (trending && !trending.posted) {
+  //   console.log('🔥 [Growth] Trending opportunity available!');
+  //   recommendations.useTrending = true;
+  //   recommendations.trendingContent = trending;
+  //   return recommendations;
+  // }
 
   // 2. Check for superfan reward
   const reward = await getNextSuperfanReward();

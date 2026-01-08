@@ -58,6 +58,12 @@ export async function wasImageRecentlyUsed(imageBuffer, imageUrl = null) {
   const now = Date.now();
   const cooldownMs = REUSE_COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
 
+  // DEFENSIVE: Ensure recentImages exists and is an array
+  if (!data.recentImages || !Array.isArray(data.recentImages)) {
+    console.log('[ImageDiversity] ⚠️  No recent images data - initializing empty array');
+    data.recentImages = [];
+  }
+
   // Check by hash (exact duplicate)
   const hashMatch = data.recentImages.find(img => img.hash === imageHash);
   if (hashMatch) {
@@ -92,6 +98,12 @@ export async function markImageAsUsed(imageBuffer, metadata, eventDescription) {
   const data = await loadDiversityData();
   const imageHash = hashImageBuffer(imageBuffer);
 
+  // DEFENSIVE: Ensure recentImages exists and is an array
+  if (!data.recentImages || !Array.isArray(data.recentImages)) {
+    console.log('[ImageDiversity] ⚠️  No recent images data - initializing empty array');
+    data.recentImages = [];
+  }
+
   const imageRecord = {
     hash: imageHash,
     url: metadata.url || metadata.imageUrl || null,
@@ -118,6 +130,19 @@ export async function markImageAsUsed(imageBuffer, metadata, eventDescription) {
  */
 export async function getDiversityStats() {
   const data = await loadDiversityData();
+
+  // DEFENSIVE: Ensure recentImages exists and is an array
+  if (!data.recentImages || !Array.isArray(data.recentImages)) {
+    console.log('[ImageDiversity] ⚠️  No recent images data - returning empty stats');
+    return {
+      totalTracked: 0,
+      last7Days: 0,
+      last30Days: 0,
+      sourceBreakdown: {},
+      oldestImage: null,
+      newestImage: null
+    };
+  }
 
   const now = Date.now();
   const last7Days = data.recentImages.filter(img =>
