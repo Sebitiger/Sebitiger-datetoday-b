@@ -32,6 +32,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: claude/fix-image-upload-4JIan  # TEMPORARY: Use feature branch with strategic fixes
 
       - name: Setup Node
         uses: actions/setup-node@v4

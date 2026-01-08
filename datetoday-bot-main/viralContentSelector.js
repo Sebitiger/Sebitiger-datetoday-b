@@ -347,21 +347,20 @@ export async function getUnderrepresentedRegions() {
   });
 
   // AGGRESSIVE US PENALTY - Target 2% (max ~1 post per week out of 35)
-  // Penalize if ANY US content in last 7 days (unless it's the only post that week)
+  // ALWAYS penalize US content by default (not just after quota hit)
   const usCount = regionCounts['Americas-US'] || 0;
   const targetUSPosts = 0.7; // 2% of 35 posts = 0.7 posts per week
-  const usOverrepresented = usCount >= targetUSPosts; // Penalize after even 1 post
+
+  // CRITICAL FIX: Always penalize US content (strategy is minimize US, not "wait until quota")
+  const usOverrepresented = true; // ALWAYS apply penalty to enforce 2% target
 
   console.log(`[Diversity] Underrepresented regions: ${underrepresented.join(', ')}`);
   console.log(`[Diversity] US posts in last 7 days: ${usCount} (target: <1, ideal: 0)`);
-
-  if (usOverrepresented) {
-    console.log(`[Diversity] 🚫 US content HEAVILY PENALIZED (target 2% = max 1 post/week)`);
-  }
+  console.log(`[Diversity] 🚫 US content ALWAYS PENALIZED (2% target = minimize by default)`);
 
   return {
     boost: underrepresented,
-    penalize: usOverrepresented ? ['Americas-US'] : []
+    penalize: ['Americas-US'] // ALWAYS penalize US content
   };
 }
 

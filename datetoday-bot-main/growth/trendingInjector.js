@@ -59,20 +59,36 @@ export async function findHistoricalParallel(trendingTopic) {
 
 Find a compelling historical parallel, precedent, or connection.
 
-Examples:
-- If "AI regulation" → Luddites destroying machines (1811-1816)
-- If "Supreme Court ruling" → Dred Scott decision (1857)
-- If "Mars exploration" → Age of Exploration (1400s-1600s)
-- If "Pandemic response" → 1918 Spanish Flu, Black Death
-- If "Economic crisis" → 1929 Great Depression, Tulip Mania
+CRITICAL REQUIREMENTS:
+- Event MUST be from OUTSIDE the United States (Asia, Europe, Africa, Middle East, Oceania, Latin America)
+- Event MUST be globally significant (not regional politics)
+- Event MUST stand alone WITHOUT needing current events context
+- Event MUST NOT be US regulatory, political, or governmental history
+- Focus on timeless historical moments, not modern parallels
+
+ACCEPTABLE Examples:
+- Technology/Innovation → Printing press (Gutenberg, 1440s Germany)
+- Power struggles → Fall of Roman Empire (476 CE)
+- Pandemic → Black Death (1347-1353 Europe/Asia)
+- Economic collapse → Tulip Mania (1637 Netherlands)
+- Exploration → Zheng He's voyages (1405-1433 China)
+
+REJECT:
+- Any US regulatory/political events (Radio Act, Supreme Court, Constitutional amendments)
+- Any events requiring knowledge of current debates
+- Any regional conflicts or battles
+- Any modern era political parallels
 
 Return JSON:
 {
   "event": "specific historical event",
   "year": year or range,
+  "region": "geographic region (NOT Americas-US)",
   "connection": "how it relates",
   "hook": "viral tweet hook (40 words max)",
-  "relevance": 0-100
+  "relevance": 0-100,
+  "isGloballySignificant": true/false,
+  "requiresCurrentContext": true/false
 }`;
 
   try {
@@ -86,11 +102,63 @@ Return JSON:
 
     const result = JSON.parse(response.choices[0].message.content);
 
-    // Only return if relevance is high
-    if (result.relevance && result.relevance >= 70) {
+    // STRICT FILTERING FOR GLOBAL NON-US CONTENT
+
+    // Filter 1: Reject if not globally significant
+    if (!result.isGloballySignificant) {
+      console.log('[Trending] ❌ Rejected: Not globally significant');
+      return null;
+    }
+
+    // Filter 2: Reject if requires current context
+    if (result.requiresCurrentContext) {
+      console.log('[Trending] ❌ Rejected: Requires current events context');
+      return null;
+    }
+
+    // Filter 3: Reject US content
+    if (result.region && result.region.includes('US')) {
+      console.log('[Trending] ❌ Rejected: US content');
+      return null;
+    }
+
+    // Filter 4: Detect US content in event description (backup check)
+    const eventLower = (result.event || '').toLowerCase();
+    const usKeywords = [
+      // Country names
+      'america', 'american', 'united states', 'u.s.', 'usa',
+      // Government/institutions
+      'congress', 'senate', 'president', 'supreme court', 'constitutional',
+      'fbi', 'cia', 'nasa', 'pentagon', 'white house',
+      // Historical figures
+      'washington', 'jefferson', 'lincoln', 'roosevelt', 'kennedy', 'jackson',
+      'madison', 'adams', 'hamilton', 'franklin',
+      // Economic events (US-specific)
+      'wall street', 'federal reserve', 'stock market crash', 'great depression',
+      'panic of 18', 'panic of 19', // Catches "Panic of 1873", "Panic of 1893", etc.
+      // Regulatory/Legal
+      'antitrust', 'sherman act', 'clayton act', 'securities act',
+      'new deal', 'square deal', 'great society',
+      // Wars/conflicts
+      'civil war', 'revolutionary war', 'war of 1812', 'mexican war',
+      'confederate', 'union army', 'continental army',
+      // Places
+      'philadelphia', 'boston', 'new york', 'virginia', 'massachusetts',
+      'california', 'texas', 'manhattan'
+    ];
+
+    if (usKeywords.some(keyword => eventLower.includes(keyword))) {
+      console.log(`[Trending] ❌ Rejected: US keywords detected in "${result.event}"`);
+      return null;
+    }
+
+    // Filter 5: Only return if relevance is high AND quality criteria met
+    if (result.relevance && result.relevance >= 80) {
+      console.log(`[Trending] ✅ Accepted: ${result.event} (${result.region}, relevance: ${result.relevance})`);
       return result;
     }
 
+    console.log('[Trending] ❌ Rejected: Relevance too low (<80)');
     return null;
   } catch (error) {
     console.error('[Trending] Failed to find parallel:', error.message);
@@ -104,16 +172,32 @@ Return JSON:
 export async function generateTrendingTweet(topic, connection) {
   const prompt = `Trending now: "${topic.title}"
 Historical parallel: ${connection.event} (${connection.year})
+Region: ${connection.region}
 
-Generate viral tweet connecting trending topic to history:
-- Start with hook about trending topic
-- Reveal historical parallel
-- Draw connection (not preachy)
-- Max 280 chars
-- NO hashtags except trending topic hashtag
+Generate viral tweet connecting trending topic to history.
 
-Example:
-"Everyone's talking about AI regulation. 1811: English workers destroyed textile machines to protect jobs. The Luddites lost. Technology always wins. #AI"
+CRITICAL RULES:
+- AUTHORITATIVE reference account tone
+- NO rhetorical questions ("Debating X?", "Everyone's talking about X?")
+- Start with HISTORICAL FACT directly
+- Use declarative statements only
+- NO hashtags whatsoever
+- Max 280 characters
+- Make the connection subtle, not preachy
+
+STRUCTURE:
+1. Lead with historical event and date
+2. Brief context/significance
+3. Optional: Subtle connection to modern parallel (one phrase maximum)
+
+GOOD Example:
+"1440. Gutenberg's printing press mechanized knowledge distribution. Within 50 years, 20 million books existed. Information monopolies collapsed across Europe."
+
+BAD Examples (NEVER use these patterns):
+"Debating AI regulation? Look back to 1811..." ❌ (rhetorical question)
+"Everyone's talking about X..." ❌ (contemporary framing)
+"Just like today's debate about..." ❌ (heavy-handed parallel)
+"Technology always wins. #AI" ❌ (hashtag)
 
 Return just the tweet text.`;
 
@@ -125,7 +209,30 @@ Return just the tweet text.`;
       max_tokens: 150
     });
 
-    return response.choices[0].message.content.trim();
+    let tweet = response.choices[0].message.content.trim();
+
+    // CRITICAL POST-PROCESSING
+
+    // Remove any hashtags
+    tweet = tweet.replace(/#\w+/g, '').trim();
+
+    // Remove double spaces
+    tweet = tweet.replace(/\s+/g, ' ').trim();
+
+    // Reject if it contains rhetorical questions
+    if (tweet.match(/^(debating|everyone's talking|what if|did you know|imagine|picture this)/i)) {
+      console.log('[Trending] ❌ Rejected tweet: Contains rhetorical framing');
+      return null;
+    }
+
+    // Reject if it has question marks (no questions allowed)
+    if (tweet.includes('?')) {
+      console.log('[Trending] ❌ Rejected tweet: Contains questions');
+      return null;
+    }
+
+    console.log('[Trending] ✅ Generated tweet passes all filters');
+    return tweet;
   } catch (error) {
     console.error('[Trending] Tweet generation failed:', error.message);
     return null;
