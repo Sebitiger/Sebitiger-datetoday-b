@@ -208,15 +208,48 @@ export function detectRegion(event) {
   // AGGRESSIVE US DETECTION (for heavy penalty - target 2% content)
   // Check for US-specific keywords, people, places, events
   const usPatterns = [
+    // Country names
     /\b(america|american|united states|u\.s\.|usa)\b/i,
-    /\b(washington|jefferson|lincoln|roosevelt|kennedy)\b/i,
-    /\b(congress|senate|president|supreme court)\b/i,
-    /\b(virginia|massachusetts|pennsylvania|new york|california|texas)\b/i,
-    /\b(revolutionary war|civil war|independence|constitution)\b/i,
-    /\b(confederate|union|yankee|colonial america)\b/i,
-    /\b(declaration of independence|bill of rights)\b/i,
+
+    // Founding fathers and presidents
+    /\b(washington|jefferson|lincoln|roosevelt|kennedy|madison|adams|hamilton|franklin)\b/i,
+    /\b(jackson|grant|eisenhower|reagan|truman|polk|mckinley)\b/i,
+
+    // Government/institutions
+    /\b(congress|senate|president|supreme court|white house)\b/i,
+    /\b(declaration of independence|bill of rights|constitution)\b/i,
     /\b(nasa|fbi|cia|pentagon)\b/i,
-    /\b(boston|philadelphia|richmond|atlanta|chicago|los angeles)\b/i
+
+    // Wars/conflicts
+    /\b(revolutionary war|civil war|war of 1812|mexican war|spanish.american war)\b/i,
+    /\b(confederate|union|yankee|continental army|colonial america)\b/i,
+
+    // ALL 50 US STATES (comprehensive list)
+    /\b(alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware)\b/i,
+    /\b(florida|georgia|hawaii|idaho|illinois|indiana|iowa|kansas|kentucky)\b/i,
+    /\b(louisiana|maine|maryland|massachusetts|michigan|minnesota|mississippi|missouri)\b/i,
+    /\b(montana|nebraska|nevada|new hampshire|new jersey|new mexico|new york)\b/i,
+    /\b(north carolina|north dakota|ohio|oklahoma|oregon|pennsylvania|rhode island)\b/i,
+    /\b(south carolina|south dakota|tennessee|texas|utah|vermont|virginia)\b/i,
+    /\b(washington state|west virginia|wisconsin|wyoming)\b/i,
+
+    // Major US cities
+    /\b(boston|philadelphia|new york city|baltimore|richmond|atlanta|miami)\b/i,
+    /\b(chicago|detroit|cleveland|pittsburgh|new orleans|houston|dallas|san antonio)\b/i,
+    /\b(los angeles|san francisco|san diego|seattle|denver|phoenix|las vegas)\b/i,
+
+    // US territories and historical regions
+    /\b(territory of orleans|louisiana territory|texas republic|republic of texas)\b/i,
+    /\b(puerto rico|guam|american samoa|u\.s\. virgin islands)\b/i,
+
+    // Historical US figures
+    /\b(harriet tubman|frederick douglass|booker t|martin luther king|malcolm x)\b/i,
+    /\b(susan b\. anthony|sitting bull|geronimo|crazy horse|pocahontas)\b/i,
+
+    // US-specific events/movements
+    /\b(slave revolt|slavery|underground railroad|emancipation)\b/i,
+    /\b(manifest destiny|gold rush|dust bowl|great migration)\b/i,
+    /\b(wall street|stock market|federal reserve)\b/i
   ];
 
   for (const pattern of usPatterns) {
