@@ -20,6 +20,7 @@ CRITICAL RULES:
 - Hook FIRST (shocking fact leads)
 - Global audience (not just Americans)
 - NO hashtags, NO emojis, NO modern parallels
+- NO rhetorical questions - use DECLARATIVE statements only
 - Simple language (10th grade reading level)
 
 STRUCTURE:
@@ -32,6 +33,7 @@ VOICE:
 - Specific names, dates, numbers
 - Deadpan delivery (facts speak for themselves)
 - Accessible to NON-historians
+- AUTHORITATIVE - state facts directly, never ask questions
 
 EXAMPLES OF PERFECT LENGTH:
 "Cleopatra lived closer to the iPhone than to the pyramids. 2,500 years separated her from pyramid construction. Only 2,000 years separate us from her."
@@ -42,6 +44,7 @@ AVOID:
 - Long scene-setting
 - Academic language
 - "Picture this..." "Imagine..." (just tell it)
+- Questions of any kind ("Did you know...?", "What if...?")
 - Multiple paragraphs
 - Anything over 280 characters
 
@@ -525,7 +528,15 @@ async function generateContent(prompt) {
     max_tokens: 150  // REDUCED: Force brevity (280 chars ≈ 70 tokens)
   });
 
-  return response.choices[0].message.content.trim();
+  let content = response.choices[0].message.content.trim();
+
+  // CRITICAL: Remove any hashtags that slip through
+  content = content.replace(/#\w+/g, '').trim();
+
+  // Remove double spaces created by hashtag removal
+  content = content.replace(/\s+/g, ' ').trim();
+
+  return content;
 }
 
 /**
