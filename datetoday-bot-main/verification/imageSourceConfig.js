@@ -16,14 +16,14 @@ export const IMAGE_SOURCE_CONFIG = {
   // VERIFICATION SETTINGS
   verification: {
     enabled: true,              // Use GPT-4 Vision verification
-    confidenceThreshold: 75,    // Accept images with 75%+ confidence (balanced)
-    rejectBelow: 60,           // Hard reject below 60%
+    confidenceThreshold: 65,    // Accept images with 65%+ confidence (more permissive for global content)
+    rejectBelow: 50,           // Hard reject below 50% (lowered to increase image success rate)
 
     // Scoring weights
     scoring: {
-      historicalAccuracy: 0.60,  // 60% weight on accuracy
-      imageQuality: 0.25,        // 25% weight on resolution/quality
-      sourceReliability: 0.15,   // 15% weight on source trustworthiness
+      historicalAccuracy: 0.55,  // 55% weight on accuracy (slightly lowered)
+      imageQuality: 0.20,        // 20% weight on resolution/quality (lowered - accept more thumbnails)
+      sourceReliability: 0.25,   // 25% weight on source trustworthiness (increased - trust quality sources)
     },
 
     // Special handling
@@ -89,8 +89,8 @@ export const IMAGE_SOURCE_CONFIG = {
 
   // IMAGE QUALITY REQUIREMENTS
   quality: {
-    minWidth: 800,              // Minimum 800px width
-    minHeight: 600,             // Minimum 600px height
+    minWidth: 600,              // Minimum 600px width (lowered from 800 for more acceptance)
+    minHeight: 400,             // Minimum 400px height (lowered from 600 for thumbnails)
     maxFileSize: 5 * 1024 * 1024,  // 5MB max
     preferredFormats: ['jpg', 'jpeg', 'png'],
     rejectFormats: ['svg'],     // Reject SVGs (often logos)

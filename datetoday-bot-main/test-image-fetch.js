@@ -3,7 +3,7 @@
  * Usage: node test-image-fetch.js
  */
 
-import { fetchVerifiedImage } from "./verification/imageVerifier.js";
+import { fetchVerifiedImage } from "./verification/enhancedImageVerifier.js";
 import { getRandomEvent } from "./fetchEvents.js";
 
 async function testImageFetch() {

@@ -11,320 +11,349 @@ import { openai } from '../openaiCommon.js';
 import { verifyAndDecide, buildCorrectionPrompt } from './factChecker.js';
 import { addToQueue } from './reviewQueue.js';
 
-// VIRAL VOICE - Brief, shocking, accessible
-const VOICE_SYSTEM_PROMPT = `You are a viral history storyteller. Your goal: stop the scroll.
+// STRATEGIC VOICE - Historical patterns for modern leaders
+const VOICE_SYSTEM_PROMPT = `You are a strategic analyst who identifies historical patterns that repeat in business, markets, and leadership.
+
+TARGET AUDIENCE: Founders, investors, executives, strategists (Premium X users)
 
 CRITICAL RULES:
-- MAXIMUM 280 characters (Twitter limit)
-- 2-3 sentences MAXIMUM
-- Hook FIRST (shocking fact leads)
-- Global audience (not just Americans)
-- NO hashtags, NO emojis, NO modern parallels
+- MAXIMUM 280 characters per tweet
+- ALWAYS connect historical event to modern business/strategy pattern
+- NO hashtags, NO emojis
 - NO rhetorical questions - use DECLARATIVE statements only
-- Simple language (10th grade reading level)
+- Authoritative, analytical tone
 
 STRUCTURE:
-1. SHOCKING HOOK (1 sentence that stops scroll)
-2. BRIEF CONTEXT (1 sentence explaining)
-3. IMPACT (1 sentence showing stakes) - OPTIONAL
+1. PATTERN STATEMENT (What repeats)
+2. HISTORICAL EXAMPLE (Specific case with dates/names)
+3. MODERN RELEVANCE (Why founders/investors should care)
 
 VOICE:
-- Punchy and fast
+- Analytical, not storytelling
+- Pattern-focused, not narrative
 - Specific names, dates, numbers
-- Deadpan delivery (facts speak for themselves)
-- Accessible to NON-historians
-- AUTHORITATIVE - state facts directly, never ask questions
+- "This pattern repeats" not "This is interesting"
+- Actionable insights for decision-makers
 
-EXAMPLES OF PERFECT LENGTH:
-"Cleopatra lived closer to the iPhone than to the pyramids. 2,500 years separated her from pyramid construction. Only 2,000 years separate us from her."
+PERFECT EXAMPLES:
+"Every market collapse follows the same 3-phase pattern. 1929, 2008, 2022 all started with leverage, euphoria, then sudden liquidity crisis. Smart money watches debt levels, not valuations."
 
-"July 4, 1776. America declared independence. The signer John Hancock made his signature massive so King George could read it without glasses."
+"Failed empires always ignore logistics. Rome, Napoleon, Germany in Russia. Modern companies do the same - chase growth, forget supply chain. Distribution beats product every time."
+
+"Monopolies collapse when they stop innovating. Kodak invented digital cameras in 1975, then buried it to protect film sales. Filed bankruptcy 2012. Disruption comes from within."
+
+WHAT FOUNDERS/INVESTORS CARE ABOUT:
+- Market cycles and crashes
+- Why empires/companies fail
+- Competitive strategy lessons
+- Timing and opportunity windows
+- Resource allocation mistakes
+- Leadership decision patterns
+- Innovation vs. execution
+- Network effects and scale
 
 AVOID:
-- Long scene-setting
-- Academic language
-- "Picture this..." "Imagine..." (just tell it)
-- Questions of any kind ("Did you know...?", "What if...?")
-- Multiple paragraphs
-- Anything over 280 characters
+- Pure historical trivia
+- "Fun facts" with no application
+- Academic historical analysis
+- Modern politics or controversy
+- Anything irrelevant to strategy/business
 
-Your job: Make history VIRAL.`;
+Your job: Extract repeating patterns that help modern leaders make better decisions.`;
 
-// CONTENT CATEGORIES - Ranked by viral potential
+// STRATEGIC CATEGORIES - Business patterns that repeat
 const CONTENT_CATEGORIES = {
-  BIZARRE_FACT: {
-    name: "Bizarre Fact",
-    description: "Strange truths that seem impossible",
+  MARKET_CYCLE: {
+    name: "Market Cycle Pattern",
+    description: "Economic booms, crashes, recoveries that repeat",
     engagementScore: 98,
-    examples: ["Cleopatra/iPhone timeline", "Napoleon's height myth", "Oxford older than Aztecs"]
+    examples: ["Tulip mania", "1929 crash", "Dot-com bubble", "2008 crisis"]
   },
-  INVENTION_DISCOVERY: {
-    name: "Invention/Discovery",
-    description: "Breakthroughs that changed everything",
+  EMPIRE_COLLAPSE: {
+    name: "Why Empires/Companies Fail",
+    description: "Patterns in organizational decline",
     engagementScore: 95,
-    examples: ["First flight", "Penicillin discovered", "Printing press invented"]
+    examples: ["Rome ignored barbarians", "Kodak killed its own innovation", "Blockbuster rejected Netflix"]
   },
-  UNDERDOG_TRIUMPH: {
-    name: "Underdog/Comeback",
-    description: "Against-all-odds victories",
+  COMPETITIVE_STRATEGY: {
+    name: "Competitive Advantage",
+    description: "How underdogs win against giants",
     engagementScore: 94,
-    examples: ["Escaped slavery", "Defeated empire", "Survived impossible odds"]
+    examples: ["David vs Goliath tactics", "Asymmetric warfare", "Market disruption"]
   },
-  SHOCKING_DETAIL: {
-    name: "Shocking Detail",
-    description: "Unknown facts about famous events",
+  INNOVATION_TIMING: {
+    name: "Innovation & Timing",
+    description: "Breakthroughs and why timing matters",
     engagementScore: 92,
-    examples: ["Hidden truth about known events", "What they didn't tell you"]
+    examples: ["Too early inventions", "First mover advantage", "Network effects"]
   },
-  NUMBERS_SHOCK: {
-    name: "Mind-Blowing Numbers",
-    description: "Statistics that defy belief",
+  RESOURCE_ALLOCATION: {
+    name: "Resource Allocation Failure",
+    description: "Misallocation of capital, talent, attention",
     engagementScore: 90,
-    examples: ["Timeline comparisons", "Scale revelations", "Unexpected quantities"]
+    examples: ["Betting on wrong technology", "Ignoring emerging threat", "Overinvesting in legacy"]
   },
-  CULTURAL_MOMENT: {
-    name: "Cultural Moment",
-    description: "Art, music, literature that changed culture",
-    engagementScore: 85,
-    examples: ["First novel", "Revolutionary artwork", "Banned book"]
-  },
-  HUMAN_DRAMA: {
-    name: "Human Drama",
-    description: "Personal stories with high emotional stakes",
+  LEADERSHIP_DECISION: {
+    name: "Leadership Decision Pattern",
+    description: "Critical moments where leaders made/avoided mistakes",
     engagementScore: 88,
-    examples: ["Last words", "Final choice", "Personal sacrifice"]
+    examples: ["CEO succession", "Pivot decisions", "Risk management failures"]
   },
-  BATTLE_STORY: {
-    name: "Battle Story",
-    description: "Military conflicts (lowest priority)",
-    engagementScore: 70,
-    examples: ["Only if truly iconic", "Focus on human angle", "Avoid if possible"]
+  NETWORK_EFFECTS: {
+    name: "Network Effects & Scale",
+    description: "How dominant players emerge and fall",
+    engagementScore: 85,
+    examples: ["Standard wars", "Platform dominance", "Metcalfe's Law in action"]
+  },
+  GEOPOLITICAL_SHIFT: {
+    name: "Geopolitical/Trade Pattern",
+    description: "Power shifts, trade routes, resource control",
+    engagementScore: 82,
+    examples: ["Currency collapse", "Trade war outcomes", "Supply chain shifts"]
   }
 };
 
 /**
- * Analyze event and choose best content category
- * PRIORITIZES viral-worthy content over battles
+ * Analyze event and choose best strategic category
+ * PRIORITIZES business-relevant patterns over trivia
  */
 function selectContentCategory(event) {
-  // Safety check: default to bizarre fact if no description
+  // Safety check: default to market cycle if no description
   if (!event.description || typeof event.description !== 'string') {
-    return CONTENT_CATEGORIES.BIZARRE_FACT;
+    return CONTENT_CATEGORIES.MARKET_CYCLE;
   }
 
   const desc = event.description.toLowerCase();
   const year = event.year;
 
-  // PRIORITY 1: Bizarre facts and timeline comparisons
-  if (year < 1000 || desc.includes('oldest') || desc.includes('ancient')) {
-    return CONTENT_CATEGORIES.BIZARRE_FACT;
+  // PRIORITY 1: Market cycles, financial crises, economic patterns
+  if (desc.includes('crash') || desc.includes('panic') || desc.includes('depression') ||
+      desc.includes('bubble') || desc.includes('mania') || desc.includes('crisis') ||
+      desc.includes('collapse') || desc.includes('bankrupt') || desc.includes('recession') ||
+      desc.includes('inflation') || desc.includes('stock') || desc.includes('market')) {
+    return CONTENT_CATEGORIES.MARKET_CYCLE;
   }
 
-  // PRIORITY 2: Inventions and discoveries
+  // PRIORITY 2: Empire/company collapses and organizational failure
+  if (desc.includes('fall of') || desc.includes('end of') || desc.includes('dissolved') ||
+      desc.includes('collapse') || desc.includes('defeated') || desc.includes('conquered') ||
+      desc.includes('failed') || desc.includes('abolished') || desc.includes('extinct')) {
+    return CONTENT_CATEGORIES.EMPIRE_COLLAPSE;
+  }
+
+  // PRIORITY 3: Innovation, technology, breakthroughs
   if (desc.includes('invented') || desc.includes('invention') ||
       desc.includes('discovered') || desc.includes('discovery') ||
       desc.includes('first') || desc.includes('breakthrough') ||
-      desc.includes('patent')) {
-    return CONTENT_CATEGORIES.INVENTION_DISCOVERY;
+      desc.includes('patent') || desc.includes('technology')) {
+    return CONTENT_CATEGORIES.INNOVATION_TIMING;
   }
 
-  // PRIORITY 3: Cultural moments (art, literature, music)
-  if (desc.includes('published') || desc.includes('premiered') ||
-      desc.includes('composed') || desc.includes('painted') ||
-      desc.includes('exhibition') || desc.includes('artwork') ||
-      desc.includes('novel') || desc.includes('opera') || desc.includes('symphony')) {
-    return CONTENT_CATEGORIES.CULTURAL_MOMENT;
+  // PRIORITY 4: Competitive strategy, warfare, asymmetric tactics
+  if (desc.includes('battle') || desc.includes('war') || desc.includes('defeated') ||
+      desc.includes('victory') || desc.includes('strategy') || desc.includes('tactic')) {
+    return CONTENT_CATEGORIES.COMPETITIVE_STRATEGY;
   }
 
-  // PRIORITY 4: Underdog/triumph stories
-  if (desc.includes('escaped') || desc.includes('survived') ||
-      desc.includes('against odds') || desc.includes('defeated') ||
-      desc.includes('overcame') || desc.includes('triumph')) {
-    return CONTENT_CATEGORIES.UNDERDOG_TRIUMPH;
+  // PRIORITY 5: Geopolitical shifts, trade, treaties
+  if (desc.includes('treaty') || desc.includes('trade') || desc.includes('alliance') ||
+      desc.includes('empire') || desc.includes('independence') || desc.includes('territory') ||
+      desc.includes('founded') || desc.includes('established')) {
+    return CONTENT_CATEGORIES.GEOPOLITICAL_SHIFT;
   }
 
-  // PRIORITY 5: Mind-blowing numbers
-  if (desc.match(/\d{3,}/) || desc.includes('million') || desc.includes('thousand')) {
-    return CONTENT_CATEGORIES.NUMBERS_SHOCK;
+  // PRIORITY 6: Leadership decisions and succession
+  if (desc.includes('emperor') || desc.includes('king') || desc.includes('queen') ||
+      desc.includes('president') || desc.includes('leader') || desc.includes('throne') ||
+      desc.includes('crowned') || desc.includes('proclaimed')) {
+    return CONTENT_CATEGORIES.LEADERSHIP_DECISION;
   }
 
-  // PRIORITY 6: Human drama
-  if (desc.includes('died') || desc.includes('killed') || desc.includes('assassin') || desc.includes('execution')) {
-    return CONTENT_CATEGORIES.HUMAN_DRAMA;
+  // PRIORITY 7: Resource allocation and investment mistakes
+  if (desc.includes('built') || desc.includes('invested') || desc.includes('spent') ||
+      desc.includes('allocated') || desc.includes('project') || desc.includes('construction')) {
+    return CONTENT_CATEGORIES.RESOURCE_ALLOCATION;
   }
 
-  // PRIORITY 7: Shocking details about famous events
-  const famousKeywords = ['world war', 'revolution', 'independence', 'assassination'];
-  if (famousKeywords.some(kw => desc.includes(kw))) {
-    return CONTENT_CATEGORIES.SHOCKING_DETAIL;
+  // PRIORITY 8: Network effects, standards, scale
+  if (desc.includes('network') || desc.includes('standard') || desc.includes('adopted') ||
+      desc.includes('spread') || desc.includes('expansion')) {
+    return CONTENT_CATEGORIES.NETWORK_EFFECTS;
   }
 
-  // LAST RESORT: Battle stories (lowest engagement)
-  if (desc.includes('battle') || desc.includes('war')) {
-    return CONTENT_CATEGORIES.BATTLE_STORY;
-  }
-
-  // Default to bizarre fact (most viral)
-  return CONTENT_CATEGORIES.BIZARRE_FACT;
+  // Default to market cycle (most relevant for founders/investors)
+  return CONTENT_CATEGORIES.MARKET_CYCLE;
 }
 
 /**
- * Generate viral-optimized content prompts by category
- * ALL PROMPTS ENFORCE 280 CHARACTER LIMIT
+ * Generate strategic content prompts by category
+ * ALL PROMPTS MUST CONNECT TO MODERN BUSINESS/LEADERSHIP PATTERNS
  */
 function buildViralPrompt(event, category) {
+  // CRITICAL DEBUG: Log what we're building the prompt with
+  console.log(`[EnhancedGen] 🔍 BUILDING PROMPT WITH:`);
+  console.log(`[EnhancedGen]    Event.description: "${event.description?.slice(0, 80)}..."`);
+
   const baseInfo = `Year: ${event.year}
 Event: ${event.description}
 Date: ${event.monthName} ${event.day}`;
 
   const categoryPrompts = {
-    [CONTENT_CATEGORIES.BIZARRE_FACT.name]: `${baseInfo}
+    [CONTENT_CATEGORIES.MARKET_CYCLE.name]: `${baseInfo}
 
-Create a viral tweet that makes people say "WHAT?!"
-
-RULES:
-- MAXIMUM 280 characters
-- 2-3 sentences only
-- Lead with the bizarre fact
-- Simple language (global audience)
-- Specific numbers/names
-
-STRUCTURE:
-1. Shocking fact FIRST
-2. Brief explanation
-3. Optional: why it matters
-
-EXAMPLE:
-"Oxford University existed 300 years before the Aztec Empire. Teaching started at Oxford in 1096. The Aztecs founded Tenochtitlan in 1325."`,
-
-    [CONTENT_CATEGORIES.INVENTION_DISCOVERY.name]: `${baseInfo}
-
-Create viral tweet about breakthrough discovery/invention.
+Extract the REPEATING PATTERN from this economic/market event and connect to modern markets.
 
 RULES:
 - MAXIMUM 280 characters
-- 2-3 sentences only
-- Hook first (the "wow" moment)
-- Global accessible language
+- Pattern FIRST, then historical example, then modern relevance
+- No trivia - only actionable insights
+- Authoritative, analytical tone
 
 STRUCTURE:
-1. Discovery/invention announced
-2. Brief impact/significance
-3. Optional: surprising detail
+1. STATE THE PATTERN ("Every market collapse follows [pattern]")
+2. HISTORICAL CASE (specific dates, numbers, names)
+3. MODERN APPLICATION ("Smart money watches [X], not [Y]")
 
 EXAMPLE:
-"January 15, 1759. The British Museum opened to the public. First major national museum free to all. Democracy in action through knowledge."`,
+"Every market collapse follows the same 3-phase pattern. 1929, 2008, 2022 all started with leverage, euphoria, then sudden liquidity crisis. Smart money watches debt levels, not valuations."
 
-    [CONTENT_CATEGORIES.UNDERDOG_TRIUMPH.name]: `${baseInfo}
+Focus on: Cycles, crashes, manias, liquidity, leverage, timing.`,
 
-Create viral underdog story - against-all-odds victory.
+    [CONTENT_CATEGORIES.EMPIRE_COLLAPSE.name]: `${baseInfo}
+
+Extract why empires/organizations fail - connect to modern companies.
 
 RULES:
 - MAXIMUM 280 characters
-- 2-3 sentences only
-- Lead with impossible odds
-- Then reveal triumph
+- Failure pattern FIRST, then historical case, then modern lesson
+- Authoritative, analytical
 
 STRUCTURE:
-1. The impossible situation
-2. The triumph/victory
-3. Optional: impact
+1. FAILURE PATTERN ("Failed empires always ignore [X]")
+2. HISTORICAL CASE (Rome, Napoleon, specific example)
+3. MODERN LESSON ("Modern companies do the same")
 
 EXAMPLE:
-"Harriet Tubman escaped slavery at 27. Then returned to the South 13 times to free 70 more. Never lost a single person. They called her Moses."`,
+"Failed empires always ignore logistics. Rome, Napoleon, Germany in Russia. Modern companies do the same - chase growth, forget supply chain. Distribution beats product every time."
 
-    [CONTENT_CATEGORIES.SHOCKING_DETAIL.name]: `${baseInfo}
+Focus on: Why dominance ends, organizational decay, complacency, disruption.`,
 
-Reveal shocking unknown detail about famous event.
+    [CONTENT_CATEGORIES.COMPETITIVE_STRATEGY.name]: `${baseInfo}
+
+Extract asymmetric strategy - how underdogs win.
 
 RULES:
 - MAXIMUM 280 characters
-- 2-3 sentences only
-- "You know X. You don't know Y." structure works well
-- Specific facts only
+- Strategy FIRST, then historical example, then business application
+- Tactical, not emotional
 
 STRUCTURE:
-1. Reference famous event
-2. Reveal hidden detail
-3. Specific evidence
+1. STRATEGY PRINCIPLE ("Asymmetric warfare works when [pattern]")
+2. HISTORICAL CASE (specific battle, names, dates)
+3. BUSINESS APPLICATION ("Startups beat incumbents the same way")
 
 EXAMPLE:
-"You know the Titanic sank in 1912. You don't know the band kept playing as it went down. All 8 musicians drowned. Not one tried to save himself."`,
+"Guerrilla tactics work when you control timing and terrain. Vietnam beat France, then the US. Startups do the same - pick battles, own the niche. Don't fight on incumbent's turf."
 
-    [CONTENT_CATEGORIES.NUMBERS_SHOCK.name]: `${baseInfo}
+Focus on: David vs Goliath tactics, resource constraints, asymmetric advantages.`,
 
-Use shocking numbers/statistics for impact.
+    [CONTENT_CATEGORIES.INNOVATION_TIMING.name]: `${baseInfo}
+
+Extract innovation timing pattern - why ideas succeed or fail.
 
 RULES:
 - MAXIMUM 280 characters
-- 2-3 sentences only
-- Lead with the number
-- Make it human/relatable
+- Timing pattern FIRST, then historical case, then modern implication
+- Focus on when, not just what
 
 STRUCTURE:
-1. The shocking number
-2. What it meant
-3. Comparison for scale (optional)
+1. TIMING PRINCIPLE ("Too-early innovations die because [reason]")
+2. HISTORICAL CASE (invention, year, outcome)
+3. MODERN LESSON ("Watch for [market condition]")
 
 EXAMPLE:
-"The Great Wall of China took 2,000 years to build. Over 1 million workers died during construction. Their bodies were buried inside the wall."`,
+"Monopolies collapse when they stop innovating. Kodak invented digital cameras in 1975, then buried it to protect film sales. Filed bankruptcy 2012. Disruption comes from within."
 
-    [CONTENT_CATEGORIES.CULTURAL_MOMENT.name]: `${baseInfo}
+Focus on: First mover vs. fast follower, market readiness, adoption curves.`,
 
-Create viral tweet about art/culture/literature breakthrough.
+    [CONTENT_CATEGORIES.RESOURCE_ALLOCATION.name]: `${baseInfo}
+
+Extract resource allocation mistake - capital, talent, attention.
 
 RULES:
 - MAXIMUM 280 characters
-- 2-3 sentences only
-- Make it accessible (not academic)
-- Show why it mattered
+- Mistake pattern FIRST, then historical case, then lesson
+- Focus on misallocated resources
 
 STRUCTURE:
-1. The cultural moment
-2. Why it was revolutionary
-3. Optional: lasting impact
+1. ALLOCATION MISTAKE ("Leaders always overinvest in [yesterday's winner]")
+2. HISTORICAL CASE (empire, company, specific numbers/dates)
+3. MODERN WARNING ("Watch where capital flows")
 
 EXAMPLE:
-"1937. Picasso unveiled Guernica. 25-foot painting of bombing horror. Changed how the world saw war art. Still hangs as anti-war symbol today."`,
+"France built the Maginot Line for $9B in 1930s. Impenetrable static defense. Germany went around it in 3 days. Fighting the last war is always expensive."
 
-    [CONTENT_CATEGORIES.HUMAN_DRAMA.name]: `${baseInfo}
+Focus on: Sunk cost fallacy, betting on legacy, misreading threats.`,
 
-Tell ONE person's dramatic moment.
+    [CONTENT_CATEGORIES.LEADERSHIP_DECISION.name]: `${baseInfo}
+
+Extract leadership decision pattern - critical moments that matter.
 
 RULES:
 - MAXIMUM 280 characters
-- 2-3 sentences only
-- Focus on one person
-- Emotional stakes clear
+- Decision pattern FIRST, then historical case, then modern relevance
+- Focus on the choice, not the person
 
 STRUCTURE:
-1. Person and high-stakes moment
-2. Their choice/action
-3. Outcome
+1. DECISION PATTERN ("Succession crises happen when [reason]")
+2. HISTORICAL CASE (leader, year, outcome)
+3. MODERN APPLICATION ("CEOs face same choice")
 
 EXAMPLE:
-"Sophie Scholl was 21 when Nazis caught her distributing anti-Hitler leaflets. Refused to recant. Executed by guillotine days later. 'Such a fine sunny day.'"`,
+"Leadership transitions fail when founders hold too long. Alexander the Great died at 32 with no heir. Empire split into civil war. Succession planning beats genius."
 
-    [CONTENT_CATEGORIES.BATTLE_STORY.name]: `${baseInfo}
+Focus on: Succession, pivots, crisis decisions, CEO mistakes.`,
 
-Battle story - focus on HUMAN angle, not tactics.
+    [CONTENT_CATEGORIES.NETWORK_EFFECTS.name]: `${baseInfo}
+
+Extract network effects pattern - how winners emerge and dominate.
 
 RULES:
 - MAXIMUM 280 characters
-- 2-3 sentences only
-- Human stakes (not strategy)
-- Accessible to non-military audience
+- Network pattern FIRST, then historical case, then modern parallel
+- Focus on scale and standards
 
 STRUCTURE:
-1. Key human moment in battle
-2. Stakes/significance
-3. Outcome
+1. NETWORK PRINCIPLE ("[Winner] dominated because of [network effect]")
+2. HISTORICAL CASE (railroad gauge, currency, standard)
+3. MODERN PARALLEL ("Same dynamic in [tech/crypto/AI]")
 
 EXAMPLE:
-"Agincourt, 1415. English longbowmen, starving and outnumbered 5 to 1, faced French knights. Mud saved them. French cavalry drowned in it. England won."`,
+"Standard wars create monopolies. QWERTY keyboard won in 1878 not because it was best, but because typists learned it first. Switching costs locked it in. Network effects beat quality."
+
+Focus on: Standards, platforms, locked-in effects, switching costs.`,
+
+    [CONTENT_CATEGORIES.GEOPOLITICAL_SHIFT.name]: `${baseInfo}
+
+Extract geopolitical pattern - power shifts, trade, resources.
+
+RULES:
+- MAXIMUM 280 characters
+- Shift pattern FIRST, then historical case, then modern implication
+- Focus on macro forces
+
+STRUCTURE:
+1. SHIFT PATTERN ("Empires rise when they control [resource/route]")
+2. HISTORICAL CASE (trade route, treaty, territorial shift)
+3. MODERN LENS ("Today's version: [AI chips/semiconductors/energy]")
+
+EXAMPLE:
+"Naval powers control trade. Venice dominated Mediterranean 1000-1500. Then Atlantic routes opened. Spain rose, Venice fell. Geography shifts power. Today: whoever controls data wins."
+
+Focus on: Trade routes, resource control, currency dominance, supply chains.`,
   };
 
-  return categoryPrompts[category.name] || categoryPrompts[CONTENT_CATEGORIES.BIZARRE_FACT.name];
+  return categoryPrompts[category.name] || categoryPrompts[CONTENT_CATEGORIES.MARKET_CYCLE.name];
 }
 
 /**
@@ -543,6 +572,11 @@ async function generateContent(prompt) {
  * Generate enhanced tweet with category selection
  */
 export async function generateEnhancedTweet(event, options = {}) {
+  // CRITICAL DEBUG: Log the exact event we received
+  console.log(`[EnhancedGen] 🔍 RECEIVED EVENT:`);
+  console.log(`[EnhancedGen]    Year: ${event.year}`);
+  console.log(`[EnhancedGen]    Description: "${event.description?.slice(0, 80)}..."`);
+
   const category = selectContentCategory(event);
   const prompt = buildViralPrompt(event, category);
 
