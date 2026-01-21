@@ -17,38 +17,60 @@ const VIRAL_THRESHOLD = 3.0; // 3x average engagement = viral
  * Identify viral posts from recent tweets
  */
 export async function identifyViralPosts() {
-  const avgMetrics = await getAverageMetrics();
+  try {
+    const avgMetrics = await getAverageMetrics();
 
-  if (avgMetrics.sampleSize < 10) {
-    console.log('[Viral] Not enough data yet (need 10+ tweets)');
+    if (avgMetrics.sampleSize < 10) {
+      console.log('[Viral] Not enough data yet (need 10+ tweets)');
+      return [];
+    }
+
+    const metricsFile = path.join(process.cwd(), 'data', 'engagement-metrics.json');
+
+    // Check if file exists and initialize if needed
+    let data;
+    try {
+      const fileContent = await fs.readFile(metricsFile, 'utf-8');
+      data = JSON.parse(fileContent);
+    } catch (error) {
+      console.log('[Viral] No engagement data yet - initializing metrics file');
+      data = { tweets: {}, averages: {} };
+      await fs.writeFile(metricsFile, JSON.stringify(data, null, 2));
+      return [];
+    }
+
+    const tweets = Object.values(data.tweets || {});
+
+    if (tweets.length === 0) {
+      console.log('[Viral] No tweets tracked yet');
+      return [];
+    }
+
+    const viralThreshold = avgMetrics.avgEngagement * VIRAL_THRESHOLD;
+
+    const viralPosts = tweets.filter(t =>
+      t.calculated?.totalEngagement >= viralThreshold
+    );
+
+    if (viralPosts.length > 0) {
+      console.log(`🔥 [Viral] Found ${viralPosts.length} viral posts!`);
+      console.log(`   Threshold: ${viralThreshold.toFixed(0)} engagements`);
+
+      // Analyze patterns
+      const patterns = await analyzeViralPatterns(viralPosts);
+      await saveViralPatterns(patterns);
+
+      // Generate recommendations
+      await generateViralRecommendations(patterns);
+
+      return viralPosts;
+    }
+
+    return [];
+  } catch (error) {
+    console.error('[Viral] Error identifying viral posts:', error.message);
     return [];
   }
-
-  const metricsFile = path.join(process.cwd(), 'data', 'engagement-metrics.json');
-  const data = JSON.parse(await fs.readFile(metricsFile, 'utf-8'));
-
-  const tweets = Object.values(data.tweets || {});
-  const viralThreshold = avgMetrics.avgEngagement * VIRAL_THRESHOLD;
-
-  const viralPosts = tweets.filter(t =>
-    t.calculated?.totalEngagement >= viralThreshold
-  );
-
-  if (viralPosts.length > 0) {
-    console.log(`🔥 [Viral] Found ${viralPosts.length} viral posts!`);
-    console.log(`   Threshold: ${viralThreshold.toFixed(0)} engagements`);
-
-    // Analyze patterns
-    const patterns = await analyzeViralPatterns(viralPosts);
-    await saveViralPatterns(patterns);
-
-    // Generate recommendations
-    await generateViralRecommendations(patterns);
-
-    return viralPosts;
-  }
-
-  return [];
 }
 
 /**

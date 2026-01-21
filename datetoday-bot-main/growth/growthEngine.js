@@ -21,6 +21,9 @@ import { getOptimalPostTime, recordPostTime } from './predictiveScheduler.js';
 export async function initializeGrowthEngine() {
   console.log('\n🚀 INITIALIZING GROWTH ENGINE...\n');
 
+  // Ensure data files exist
+  await ensureDataFilesExist();
+
   // Start background jobs
   await startMetricsPolling();      // Poll engagement every 6 hours
   // DISABLED: Trending scanner conflicts with reference account positioning
@@ -39,6 +42,35 @@ export async function initializeGrowthEngine() {
   console.log(`   Total: ${communityStats.totalUsers}`);
 
   console.log('\n✅ Growth engine initialized!\n');
+}
+
+/**
+ * Ensure all required data files exist with proper structure
+ */
+async function ensureDataFilesExist() {
+  const fs = await import('fs/promises');
+  const path = await import('path');
+
+  const dataDir = path.join(process.cwd(), 'data');
+
+  // Required data files with their default structures
+  const requiredFiles = {
+    'engagement-metrics.json': { tweets: {}, averages: {} },
+    'viral-patterns.json': { patterns: [] },
+    'community-data.json': { users: {} },
+    'ab-tests.json': { tests: [], results: [] }
+  };
+
+  for (const [filename, defaultContent] of Object.entries(requiredFiles)) {
+    const filePath = path.join(dataDir, filename);
+    try {
+      await fs.access(filePath);
+    } catch (error) {
+      // File doesn't exist, create it
+      console.log(`[Growth] Initializing ${filename}...`);
+      await fs.writeFile(filePath, JSON.stringify(defaultContent, null, 2));
+    }
+  }
 }
 
 /**
